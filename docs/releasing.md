@@ -5,14 +5,14 @@ signed installers for macOS, Windows, Linux, FreeBSD and the web, then creates o
 **draft** GitHub Release named `SoundCraft v<version>`. Nobody sees a draft until a maintainer
 publishes it.
 
-This is SoundCraft's implementation of the shared [release playbook](release-playbook.md).
-User-facing names say **SoundCraft**. Files, binaries and ids stay lowercase
+This is HOREGDAW's implementation of the shared [release playbook](release-playbook.md).
+User-facing names say **HOREGDAW**. Files, binaries and ids stay lowercase
 (`soundcraft-<version>-<platform>-<arch>.<ext>`, `ai.storyteller.soundcraft`).
 
 ## Cutting a release
 
 1. **Bump the version** on `main`. The only place it lives is `[workspace.package] version` in
-   the root `Cargo.toml`; the app reads it from `CARGO_PKG_VERSION` (*About SoundCraft*,
+   the root `Cargo.toml`; the app reads it from `CARGO_PKG_VERSION` (*About HOREGDAW*,
    `soundcraft --version`, `soundcraft-cli --version`).
 
    ```sh
@@ -23,7 +23,7 @@ User-facing names say **SoundCraft**. Files, binaries and ids stay lowercase
    Commit the change (`Cargo.toml` + `Cargo.lock`) through the normal review flow.
 2. **Merge `main` into `release`** (or fast-forward it) and push. The workflow starts by itself.
 3. **Wait for the draft.** After about 30 to 60 minutes (notarization and the FreeBSD VM are the
-   slow parts), the Releases page has a draft `SoundCraft v0.2.0`, tagged `v0.2.0` on the pushed
+   slow parts), the Releases page has a draft `HOREGDAW v0.2.0`, tagged `v0.2.0` on the pushed
    commit, with every artifact and `SHA256SUMS.txt`. The notes are generated from the merged PRs.
 4. **Check it.** Download an installer or two and look at the job summaries. Any `::warning::`
    there means a signing secret was missing and that artifact is unsigned.
@@ -44,17 +44,17 @@ web build and are checked, the signing jobs are refused, and no release is draft
 
 | Platform | Artifacts | Built on |
 |---|---|---|
-| macOS 11+ (universal: Apple silicon + Intel) | `soundcraft-<v>-macos-universal.dmg`, `soundcraft-cli-<v>-macos-universal.zip` | `macos-15` |
-| Windows 10+ x64 | `soundcraft-<v>-windows-x64.msi`, `soundcraft-<v>-windows-x64-portable.zip` | `windows-latest` |
-| Windows 10+ x86 (32-bit) | `soundcraft-<v>-windows-x86.msi`, `soundcraft-<v>-windows-x86-portable.zip` | `windows-latest` |
-| Windows 11 ARM64 | `soundcraft-<v>-windows-arm64.msi`, `soundcraft-<v>-windows-arm64-portable.zip` | `windows-latest` (cross-compiled; `windows-arm64.yml` installs and runs it on ARM64) |
-| Linux x86_64 | `soundcraft-<v>-linux-x86_64.{AppImage,deb,rpm,tar.gz}` | `ubuntu-22.04` |
-| Linux aarch64 | `soundcraft-<v>-linux-aarch64.{AppImage,deb,rpm,tar.gz}` | `ubuntu-22.04-arm` |
-| Linux riscv64 | `soundcraft-<v>-linux-riscv64.tar.gz` (glibc 2.39+) | `ubuntu-24.04` (cross-compiled; CLI smoke-tested under QEMU) |
-| AppImage updates | `soundcraft-<v>-linux-{x86_64,aarch64}.AppImage.zsync` | with the AppImage |
-| Flatpak x86_64, aarch64 | `soundcraft-<v>-linux-{x86_64,aarch64}.flatpak` | `ubuntu-24.04`, `ubuntu-24.04-arm` (repackages the Linux tarball) |
-| FreeBSD 14 x86_64 | `soundcraft-<v>-freebsd-x86_64.tar.gz` (a `/usr/local` tree) | FreeBSD 14.3 VM on `ubuntu-latest` |
-| Web | `soundcraft-web-<v>.zip` (static site; see [`packaging/web/README.md`](../packaging/web/README.md)) | `ubuntu-latest` |
+| macOS 11+ (universal: Apple silicon + Intel) | `horegdaw-<v>-macos-universal.dmg`, `horegdaw-cli-<v>-horegdaw-universal.zip` | `macos-15` |
+| Windows 10+ x64 | `horegdaw-<v>-windows-x64.msi`, `horegdaw-<v>-windows-x64-portable.zip` | `windows-latest` |
+| Windows 10+ x86 (32-bit) | `horegdaw-<v>-windows-x86.msi`, `horegdaw-<v>-windows-x86-portable.zip` | `windows-latest` |
+| Windows 11 ARM64 | `horegdaw-<v>-windows-arm64.msi`, `horegdaw-<v>-windows-arm64-portable.zip` | `windows-latest` (cross-compiled; `windows-arm64.yml` installs and runs it on ARM64) |
+| Linux x86_64 | `horegdaw-<v>-linux-x86_64.{AppImage,deb,rpm,tar.gz}` | `ubuntu-22.04` |
+| Linux aarch64 | `horegdaw-<v>-linux-aarch64.{AppImage,deb,rpm,tar.gz}` | `ubuntu-22.04-arm` |
+| Linux riscv64 | `horegdaw-<v>-linux-riscv64.tar.gz` (glibc 2.39+) | `ubuntu-24.04` (cross-compiled; CLI smoke-tested under QEMU) |
+| AppImage updates | `horegdaw-<v>-linux-{x86_64,aarch64}.AppImage.zsync` | with the AppImage |
+| Flatpak x86_64, aarch64 | `horegdaw-<v>-linux-{x86_64,aarch64}.flatpak` | `ubuntu-24.04`, `ubuntu-24.04-arm` (repackages the Linux tarball) |
+| FreeBSD 14 x86_64 | `horegdaw-<v>-freebsd-x86_64.tar.gz` (a `/usr/local` tree) | FreeBSD 14.3 VM on `ubuntu-latest` |
+| Web | `horegdaw-web-<v>.zip` (static site; see [`packaging/web/README.md`](../packaging/web/README.md)) | `ubuntu-latest` |
 
 The from-source Flatpak manifest (`packaging/linux/flatpak/ai.storyteller.soundcraft.yml`) is
 kept ready for a Flathub submission; the release's `.flatpak` bundles come from
@@ -62,7 +62,7 @@ kept ready for a Flathub submission; the release's `.flatpak` bundles come from
 
 ### Audio libraries
 
-SoundCraft plays and records through [cpal](https://github.com/RustAudio/cpal): CoreAudio on
+HOREGDAW plays and records through [cpal](https://github.com/RustAudio/cpal): CoreAudio on
 macOS, WASAPI on Windows, ALSA on Linux and FreeBSD (PulseAudio and PipeWire through their ALSA
 plugins), and WebAudio in the browser.
 
@@ -86,7 +86,7 @@ plugins), and WebAudio in the browser.
 - `Info.plist` is generated from `Info.plist.in`. The bundle id is `ai.storyteller.soundcraft`.
   It declares the `.scraft` session type (`ai.storyteller.soundcraft.session`, MIME
   `application/x-soundcraft-session`, role Editor, rank Owner) and lists WAV, AIFF/AIFC, FLAC,
-  MP3 and MIDI as Viewer/Alternate, so SoundCraft appears under *Open With* without taking over
+  MP3 and MIDI as Viewer/Alternate, so HOREGDAW appears under *Open With* without taking over
   the default player. `NSMicrophoneUsageDescription` explains the recording prompt.
 - **Signing** goes inside-out with the hardened runtime and a secure timestamp. The executable is
   signed first, then the bundle. There's no `--deep` on the final signature. `entitlements.plist`
