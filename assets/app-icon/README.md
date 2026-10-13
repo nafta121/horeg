@@ -1,4 +1,4 @@
-# SoundCraft app icon (placeholder)
+# Horeg app icon (placeholder)
 
 **A nightingale singing**, as an engraving-style head-and-shoulders portrait in the Crafting Apps'
 owl-template framing (craftrules `standards/icon-design.md`): a full-bleed colour field, the bird
