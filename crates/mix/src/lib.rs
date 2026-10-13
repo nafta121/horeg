@@ -2521,7 +2521,7 @@ mod tests {
 
     struct Clock {
         inner: Box<dyn Plugin>,
-        seen: Arc<std::sync::Mutex<Vec<Transport>>>,
+        seen: std::sync::mpsc::Sender<Transport>,
     }
 
     impl Plugin for Clock {
@@ -2544,7 +2544,7 @@ mod tests {
             self.inner.process(io, frames);
         }
         fn set_transport(&mut self, t: &Transport) {
-            self.seen.lock().unwrap().push(*t);
+            let _ = self.seen.send(*t);
         }
     }
 
@@ -2554,15 +2554,15 @@ mod tests {
         s.tempo.set_tempo(0, 90.0).unwrap();
         s.tempo.set_meter(0, 3, 4).unwrap();
         s.track_mut(t).unwrap().mixer.inserts[0] = Some(Insert::new("clap:test.clock"));
-        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
-        let clock = Clock { inner: soundcraft_dsp::create("gain").unwrap(), seen: Arc::clone(&seen) };
+        let (tx, rx) = std::sync::mpsc::channel();
+        let clock = Clock { inner: soundcraft_dsp::create("gain").unwrap(), seen: tx };
         let mut eng = MixEngine::new(48_000.0, 512);
         eng.set_external_instances(true);
         eng.adopt(vec![PreparedInstance { track: t, slot: 0, id: "clap:test.clock".into(), ch: 1, plugin: Box::new(clock) }]);
         render_block(&mut eng, &s, 96_000);
         eng.monitor_only = true;
         render_block(&mut eng, &s, 96_000);
-        let seen = seen.lock().unwrap();
+        let seen: Vec<Transport> = rx.try_iter().collect();
         let t0 = seen[0];
         assert!(t0.playing && !t0.recording);
         assert_eq!((t0.tempo, t0.numerator, t0.denominator, t0.samples, t0.bar), (90.0, 3, 4, 96_000, 1));
@@ -2572,7 +2572,7 @@ mod tests {
 
     struct Ears {
         inner: Box<dyn Plugin>,
-        heard: Arc<std::sync::Mutex<Vec<(usize, [u8; 3])>>>,
+        heard: std::sync::mpsc::Sender<(usize, [u8; 3])>,
     }
 
     impl Plugin for Ears {
@@ -2595,7 +2595,7 @@ mod tests {
             self.inner.process(io, frames);
         }
         fn midi(&mut self, offset: usize, msg: [u8; 3]) {
-            self.heard.lock().unwrap().push((offset, msg));
+            let _ = self.heard.send((offset, msg));
         }
     }
 
@@ -2609,22 +2609,22 @@ mod tests {
         let seq = soundcraft_midi::Sequence { ctrls, ..Default::default() };
         let cid = s.new_clip_id();
         s.track_mut(t).unwrap().playlist_mut().unwrap().clips.push(Clip::midi(cid, "m", 0, 48_000 * 4, seq));
-        let heard = Arc::new(std::sync::Mutex::new(Vec::new()));
-        let ears = Ears { inner: soundcraft_dsp::create("gain").unwrap(), heard: Arc::clone(&heard) };
+        let (tx, rx) = std::sync::mpsc::channel();
+        let ears = Ears { inner: soundcraft_dsp::create("gain").unwrap(), heard: tx };
         let mut eng = MixEngine::new(48_000.0, 512);
         eng.set_external_instances(true);
         eng.adopt(vec![PreparedInstance { track: t, slot: INSTRUMENT_SLOT, id: "clap:test.ears".into(), ch: 2, plugin: Box::new(ears) }]);
         render_block(&mut eng, &s, 0);
-        assert_eq!(std::mem::take(&mut *heard.lock().unwrap()), vec![(0, [0xB0, 121, 0]), (100, [0xB0, 64, 127])]);
+        assert_eq!(rx.try_iter().collect::<Vec<_>>(), vec![(0, [0xB0, 121, 0]), (100, [0xB0, 64, 127])]);
         render_block(&mut eng, &s, 36_000);
-        assert_eq!(std::mem::take(&mut *heard.lock().unwrap()), vec![(0, [0xB0, 121, 0]), (0, [0xB0, 64, 127]), (0, [0xE0, 0, 0])]);
+        assert_eq!(rx.try_iter().collect::<Vec<_>>(), vec![(0, [0xB0, 121, 0]), (0, [0xB0, 64, 127]), (0, [0xE0, 0, 0])]);
         render_block(&mut eng, &s, 36_512);
-        assert!(heard.lock().unwrap().is_empty());
+        assert!(rx.try_iter().collect::<Vec<_>>().is_empty());
     }
 
     struct Keys {
         inner: Box<dyn Plugin>,
-        heard: Arc<std::sync::Mutex<Vec<(u8, u8)>>>,
+        heard: std::sync::mpsc::Sender<(u8, u8)>,
     }
 
     impl Plugin for Keys {
@@ -2647,7 +2647,7 @@ mod tests {
             self.inner.process(io, frames);
         }
         fn note_on(&mut self, _offset: usize, note: u8, velocity: u8) {
-            self.heard.lock().unwrap().push((note, velocity));
+            let _ = self.heard.send((note, velocity));
         }
     }
 
@@ -2662,13 +2662,13 @@ mod tests {
         s.track_mut(t).unwrap().playlist_mut().unwrap().clips.push(Clip::midi(cid, "m", 0, 48_000, seq));
         s.edit.values.insert(format!("rtp.{}.transpose", t.0), 12.0);
         s.edit.values.insert(format!("rtp.{}.velocity", t.0), -20.0);
-        let heard = Arc::new(std::sync::Mutex::new(Vec::new()));
-        let keys = Keys { inner: soundcraft_dsp::create("gain").unwrap(), heard: Arc::clone(&heard) };
+        let (tx, rx) = std::sync::mpsc::channel();
+        let keys = Keys { inner: soundcraft_dsp::create("gain").unwrap(), heard: tx };
         let mut eng = MixEngine::new(48_000.0, 512);
         eng.set_external_instances(true);
         eng.adopt(vec![PreparedInstance { track: t, slot: INSTRUMENT_SLOT, id: "clap:test.keys".into(), ch: 2, plugin: Box::new(keys) }]);
         render_block(&mut eng, &s, 0);
-        assert_eq!(*heard.lock().unwrap(), vec![(72, 80)]);
+        assert_eq!(rx.try_iter().collect::<Vec<_>>(), vec![(72, 80)]);
     }
 
     fn render_block(eng: &mut MixEngine, s: &Session, pos: i64) -> f32 {
