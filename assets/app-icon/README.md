@@ -1,11 +1,11 @@
-# Horeg app icon (placeholder)
+# HOREGDAW app icon (placeholder)
 
 **A nightingale singing**, as an engraving-style head-and-shoulders portrait in the Crafting Apps'
 owl-template framing (craftrules `standards/icon-design.md`): a full-bleed colour field, the bird
 in three-quarter view with its bill open and its eye on the viewer, its breast and wing running off
 the bottom and right edges, three song arcs leaving the bill.
 
-This is a **placeholder** until the owner draws SoundCraft's icon in ArtCraft like the other apps'
+This is a **placeholder** until the owner draws HOREGDAW's icon in ArtCraft like the other apps'
 icons. Replace `icon.svg` and run `packaging/icons.sh`; nothing else needs to change.
 
 ## Palette
@@ -16,7 +16,7 @@ Exactly three colours:
 |---|---|---|
 | Ink | `#0b0b0c` | Line work and contour |
 | Paper | `#efe9dc` | The bird and the song arcs |
-| SoundCraft teal (app colour) | `#14a9c4` | The full-bleed background field |
+| HOREGDAW teal (app colour) | `#14a9c4` | The full-bleed background field |
 
 ## Geometry
 
@@ -26,7 +26,7 @@ tile. The macOS icons (`soundcraft.icns`, `soundcraft-macos-512.png`) sit on App
 
 ## Provenance and licence
 
-Drawn from scratch as hand-placed SVG paths by the SoundCraft contributors; no source image was
+Drawn from scratch as hand-placed SVG paths by the HOREGDAW contributors; no source image was
 traced or copied. MIT OR Apache-2.0, like the code (see `ATTRIBUTION.md`).
 
 ## Files
