@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "repo": "storytold/soundcraft",
+  "repo": "nafta121/horeg",
   "branch": "main",
   "head": "330a6983973dc2043bb1fa0f0ba67fa07ae50685",
   "head_date": "2026-10-10T18:08:49Z",
@@ -21,7 +21,7 @@
       "last_commit": "2026-10-10T18:08:49Z"
     },
     {
-      "login": "reoniazx",
+      "login": "nafta121",
       "people_entry": false,
       "github_name": null,
       "prs": 5,
@@ -60,7 +60,7 @@
       "last_commit": "2026-10-08T14:02:25Z"
     },
     {
-      "login": "XusBadia",
+      "login": "nafta",
       "people_entry": false,
       "github_name": null,
       "prs": 1,
@@ -73,7 +73,7 @@
       "last_commit": "2026-10-08T13:12:32Z"
     },
     {
-      "login": "ebbicott",
+      "login": "lyndho",
       "people_entry": false,
       "github_name": null,
       "prs": 2,
@@ -86,7 +86,7 @@
       "last_commit": "2026-10-08T19:40:37Z"
     },
     {
-      "login": "MarekSpodBiedry",
+      "login": "stikmen",
       "people_entry": false,
       "github_name": null,
       "prs": 6,
@@ -99,7 +99,7 @@
       "last_commit": "2026-10-09T19:25:52Z"
     },
     {
-      "login": "Garygunn94",
+      "login": "stickmen",
       "people_entry": false,
       "github_name": null,
       "prs": 4,
@@ -112,7 +112,7 @@
       "last_commit": "2026-10-09T15:05:24Z"
     },
     {
-      "login": "vbasky",
+      "login": "stickman",
       "people_entry": false,
       "github_name": null,
       "prs": 10,
@@ -125,7 +125,7 @@
       "last_commit": "2026-10-10T05:22:24Z"
     },
     {
-      "login": "DWAA1660",
+      "login": "horeg",
       "people_entry": false,
       "github_name": null,
       "prs": 1,
@@ -138,9 +138,9 @@
       "last_commit": "2026-10-09T00:58:22Z"
     },
     {
-      "login": "hamada147",
+      "login": "nafta",
       "people_entry": true,
-      "github_name": "Ahmed Moussa",
+      "github_name": " ",
       "prs": 1,
       "commits": 1,
       "lines_added": 27,
@@ -153,7 +153,7 @@
     {
       "login": "salignatmoandal",
       "people_entry": true,
-      "github_name": "where's Mawen?",
+      "github_name": "?",
       "prs": 2,
       "commits": 3,
       "lines_added": 119,
