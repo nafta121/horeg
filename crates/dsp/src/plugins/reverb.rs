@@ -278,58 +278,120 @@ impl Plugin for Reverb {
         }
         let size = self.size.value();
         let base: [f32; LINES] = self.cfg.delays_ms.map(|ms| ms_to_samples(ms * size, sr));
-        for n in 0..frames {
-            let xl = io.first().and_then(|b| b.get(n)).copied().filter(|v| v.is_finite()).unwrap_or(0.0);
-            let xr = if ch > 1 { io.get(1).and_then(|b| b.get(n)).copied().filter(|v| v.is_finite()).unwrap_or(0.0) } else { xl };
-            let pre = ms_to_samples(self.pre_ms.next(), sr);
-            let mut ins = [xl, xr];
-            for (side, x) in ins.iter_mut().enumerate() {
-                let d = &mut self.pre[side];
-                d.push(*x);
-                let mut v = if pre < 1.0 { *x } else { d.read(pre) };
-                for ap in &mut self.diff[side] {
-                    v = ap.process(v, g_diff);
+        // Performance optimization: Destructure channel buffer slices outside the inner frame loop
+        // to eliminate repeated bounds checks and nested Option lookups in the realtime DSP inner loop.
+        let (ch0, ch1_and_rest) = io.split_at_mut(1);
+        let left_slice = ch0.first_mut().map(|v| &mut v[..frames]);
+
+        if let Some(l_slice) = left_slice {
+            if ch == 1 {
+                #[allow(clippy::needless_range_loop)]
+                for n in 0..frames {
+                    let xl_raw = l_slice[n];
+                    let xl = if xl_raw.is_finite() { xl_raw } else { 0.0 };
+                    let xr = xl;
+
+                    let pre = ms_to_samples(self.pre_ms.next(), sr);
+                    let mut ins = [xl, xr];
+                    for (side, x) in ins.iter_mut().enumerate() {
+                        let d = &mut self.pre[side];
+                        d.push(*x);
+                        let mut v = if pre < 1.0 { *x } else { d.read(pre) };
+                        for ap in &mut self.diff[side] {
+                            v = ap.process(v, g_diff);
+                        }
+                        *x = v;
+                    }
+                    self.lfo += lfo_inc;
+                    if self.lfo >= 1.0 {
+                        self.lfo -= 1.0;
+                    }
+                    let (s, c) = (self.lfo * std::f32::consts::TAU).sin_cos();
+                    let mods = [0.0, s, 0.0, c, 0.0, -s, 0.0, -c];
+                    let mut o = [0.0f32; LINES];
+                    for i in 0..LINES {
+                        let raw = self.lines[i].read(base[i] + mod_depth * (1.0 + mods[i]));
+                        self.lp[i] = flush(raw + (self.lp[i] - raw) * damp);
+                        o[i] = raw;
+                    }
+                    let mut fb: [f32; LINES] = std::array::from_fn(|i| self.lp[i] * self.gains[i]);
+                    hadamard8(&mut fb);
+                    for (i, (line, f)) in self.lines.iter_mut().zip(fb).enumerate() {
+                        let inj = if i % 2 == 0 { ins[0] } else { ins[1] };
+                        line.push(flush(f + inj * 0.5));
+                    }
+                    let wl = 0.4 * (o[0] - o[2] + o[4] - o[6]);
+                    let wr = 0.4 * (o[1] - o[3] + o[5] - o[7]);
+                    let wl = self.lowcut[0].process_sample(wl);
+                    let wr = self.lowcut[1].process_sample(wr);
+                    let w = self.width.next();
+                    let mid = 0.5 * (wl + wr);
+                    let _side = 0.5 * (wl - wr) * w;
+                    let m = self.mix.next();
+
+                    l_slice[n] = xl * (1.0 - m) + mid * m;
                 }
-                *x = v;
-            }
-            self.lfo += lfo_inc;
-            if self.lfo >= 1.0 {
-                self.lfo -= 1.0;
-            }
-            let (s, c) = (self.lfo * std::f32::consts::TAU).sin_cos();
-            let mods = [0.0, s, 0.0, c, 0.0, -s, 0.0, -c];
-            let mut o = [0.0f32; LINES];
-            for i in 0..LINES {
-                let raw = self.lines[i].read(base[i] + mod_depth * (1.0 + mods[i]));
-                self.lp[i] = flush(raw + (self.lp[i] - raw) * damp);
-                o[i] = raw;
-            }
-            let mut fb: [f32; LINES] = std::array::from_fn(|i| self.lp[i] * self.gains[i]);
-            hadamard8(&mut fb);
-            for (i, (line, f)) in self.lines.iter_mut().zip(fb).enumerate() {
-                let inj = if i % 2 == 0 { ins[0] } else { ins[1] };
-                line.push(flush(f + inj * 0.5));
-            }
-            let wl = 0.4 * (o[0] - o[2] + o[4] - o[6]);
-            let wr = 0.4 * (o[1] - o[3] + o[5] - o[7]);
-            let wl = self.lowcut[0].process_sample(wl);
-            let wr = self.lowcut[1].process_sample(wr);
-            let w = self.width.next();
-            let mid = 0.5 * (wl + wr);
-            let side = 0.5 * (wl - wr) * w;
-            let (wl, wr) = (mid + side, mid - side);
-            let m = self.mix.next();
-            for (c, b) in io.iter_mut().take(ch).enumerate() {
-                let wet = if ch == 1 {
-                    mid
-                } else if c % 2 == 0 {
-                    wl
-                } else {
-                    wr
-                };
-                if let Some(x) = b.get_mut(n) {
-                    let dry = if x.is_finite() { *x } else { 0.0 };
-                    *x = dry * (1.0 - m) + wet * m;
+            } else {
+                let (ch1, rest) = ch1_and_rest.split_at_mut(1);
+                let r_slice = &mut ch1[0][..frames];
+
+                #[allow(clippy::needless_range_loop)]
+                for n in 0..frames {
+                    let xl_raw = l_slice[n];
+                    let xl = if xl_raw.is_finite() { xl_raw } else { 0.0 };
+                    let xr_raw = r_slice[n];
+                    let xr = if xr_raw.is_finite() { xr_raw } else { 0.0 };
+
+                    let pre = ms_to_samples(self.pre_ms.next(), sr);
+                    let mut ins = [xl, xr];
+                    for (side, x) in ins.iter_mut().enumerate() {
+                        let d = &mut self.pre[side];
+                        d.push(*x);
+                        let mut v = if pre < 1.0 { *x } else { d.read(pre) };
+                        for ap in &mut self.diff[side] {
+                            v = ap.process(v, g_diff);
+                        }
+                        *x = v;
+                    }
+                    self.lfo += lfo_inc;
+                    if self.lfo >= 1.0 {
+                        self.lfo -= 1.0;
+                    }
+                    let (s, c) = (self.lfo * std::f32::consts::TAU).sin_cos();
+                    let mods = [0.0, s, 0.0, c, 0.0, -s, 0.0, -c];
+                    let mut o = [0.0f32; LINES];
+                    for i in 0..LINES {
+                        let raw = self.lines[i].read(base[i] + mod_depth * (1.0 + mods[i]));
+                        self.lp[i] = flush(raw + (self.lp[i] - raw) * damp);
+                        o[i] = raw;
+                    }
+                    let mut fb: [f32; LINES] = std::array::from_fn(|i| self.lp[i] * self.gains[i]);
+                    hadamard8(&mut fb);
+                    for (i, (line, f)) in self.lines.iter_mut().zip(fb).enumerate() {
+                        let inj = if i % 2 == 0 { ins[0] } else { ins[1] };
+                        line.push(flush(f + inj * 0.5));
+                    }
+                    let wl = 0.4 * (o[0] - o[2] + o[4] - o[6]);
+                    let wr = 0.4 * (o[1] - o[3] + o[5] - o[7]);
+                    let wl = self.lowcut[0].process_sample(wl);
+                    let wr = self.lowcut[1].process_sample(wr);
+                    let w = self.width.next();
+                    let mid = 0.5 * (wl + wr);
+                    let side = 0.5 * (wl - wr) * w;
+                    let (wl, wr) = (mid + side, mid - side);
+                    let m = self.mix.next();
+
+                    l_slice[n] = xl * (1.0 - m) + wl * m;
+                    r_slice[n] = xr * (1.0 - m) + wr * m;
+
+                    for (i, b) in rest.iter_mut().take(ch.saturating_sub(2)).enumerate() {
+                        let c = i + 2;
+                        let wet = if c % 2 == 0 { wl } else { wr };
+                        if let Some(x) = b.get_mut(n) {
+                            let dry = if x.is_finite() { *x } else { 0.0 };
+                            *x = dry * (1.0 - m) + wet * m;
+                        }
+                    }
                 }
             }
         }
