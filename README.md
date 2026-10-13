@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://getartcraft.com/">
+  <a href="">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="docs/brand/artcraft-logo-white.svg">
       <img alt="ArtCraft" src="docs/brand/artcraft-logo.svg" width="200">
@@ -7,7 +7,7 @@
   </a>
 </p>
 
-<h1 align="center">SoundCraft</h1>
+<h1 align="center">Horeg</h1>
 
 <p align="center">
   <b>Recording, editing and mixing audio; an open-source, clean-room reimplementation of Avid Pro Tools, rebuilt in pure Rust.</b>
