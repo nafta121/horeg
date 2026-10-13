@@ -1,4 +1,4 @@
-# Where SoundCraft falls short of Pro Tools
+# Where HOREGDAW falls short of Pro Tools
 
 > **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-12 · **Change:** minor (G-01: audio device settings and opt-in ASIO) · **Target:** Avid Pro Tools Ultimate 2026.4.1
 
