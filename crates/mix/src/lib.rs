@@ -1100,7 +1100,7 @@ fn contain_failure(slot: &mut PluginSlot, buf: &mut [Vec<f32>], frames: usize) -
 }
 
 /// Clip-effect parameters of a clip, or None when it has none or they are bypassed.
-fn clip_fx_params(s: &Session, clip: u64) -> Option<impl Iterator<Item = (&str, f32)> + Clone> {
+fn clip_fx_params(s: &Session, clip: u64) -> Option<impl Iterator<Item = (&str, f32)>> {
     if s.edit.values.is_empty() || Key::new(format_args!("clip_fx.bypass.{clip}")).is_none_or(|k| s.edit.flag(k.as_str())) {
         return None;
     }
@@ -1156,28 +1156,26 @@ impl ClipFx {
         })
     }
     /// Modules exist only when one of their parameters is set.
-    fn configure<'a>(&mut self, params: impl Iterator<Item = (&'a str, f32)> + Clone) {
+    fn configure<'a>(&mut self, params: impl Iterator<Item = (&'a str, f32)>) {
         self.gain_db = 0.0;
-        let has_eq = params.clone().any(|(k, _)| k.starts_with("eq."));
-        let has_comp = params.clone().any(|(k, _)| k.starts_with("comp."));
-        if has_eq && self.eq.is_none() {
-            self.eq = self.make("eq_7band");
-        } else if !has_eq {
-            self.eq = None;
-        }
-        if has_comp && self.comp.is_none() {
-            self.comp = self.make("compressor");
-        } else if !has_comp {
-            self.comp = None;
-        }
+        let mut has_eq = false;
+        let mut has_comp = false;
         for (k, v) in params {
             if let Some(p) = k.strip_prefix("eq.") {
+                has_eq = true;
+                if self.eq.is_none() {
+                    self.eq = self.make("eq_7band");
+                }
                 if let Some(eq) = &mut self.eq
                     && eq.param(p) != Some(v)
                 {
                     eq.set_param(p, v);
                 }
             } else if let Some(p) = k.strip_prefix("comp.") {
+                has_comp = true;
+                if self.comp.is_none() {
+                    self.comp = self.make("compressor");
+                }
                 if let Some(c) = &mut self.comp
                     && c.param(p) != Some(v)
                 {
@@ -1186,6 +1184,12 @@ impl ClipFx {
             } else if k == "gain" {
                 self.gain_db = v;
             }
+        }
+        if !has_eq {
+            self.eq = None;
+        }
+        if !has_comp {
+            self.comp = None;
         }
     }
     fn process(&mut self, io: &mut [Vec<f32>], frames: usize) {
