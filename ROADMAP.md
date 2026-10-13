@@ -1,10 +1,10 @@
-# SoundCraft roadmap
+# HOREGDAW roadmap
 
 **Stage: pre-alpha** · next: alpha, ~5% and ~110–180 h away (the alpha gate's three failing workflows)
 
 > **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** minor (readiness by audience with hours to ~95 %) · **Target:** Avid Pro Tools Ultimate 2026.4.1
 
-SoundCraft is a clean-room, pure-Rust digital audio workstation that aims at full parity with
+HOREGDAW is a clean-room, pure-Rust digital audio workstation that aims at full parity with
 Avid Pro Tools, and then beyond it: faster, open, scriptable and agent-controllable. This page is
 the one-page summary; the detail is in [`docs/target-app-parity.md`](docs/target-app-parity.md)
 (assessment), [`docs/gaps.md`](docs/gaps.md) (ranked work list), [`docs/roadmap.md`](docs/roadmap.md)
