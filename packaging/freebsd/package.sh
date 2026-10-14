@@ -39,7 +39,7 @@ BASENAME="soundcraft-$VERSION-freebsd-$ARCH"
 echo "==> SoundCraft $VERSION for FreeBSD $ARCH"
 
 if [ "$SKIP_BUILD" = 0 ]; then
-  (cd "$ROOT" && cargo build --release --locked -p soundcraft -p soundcraft-cli)
+  (cd "$ROOT" && cargo build --release --locked -p horegdaw -p horegdaw-cli)
 fi
 BIN="$CARGO_TARGET_DIR/release"
 WORK="$CARGO_TARGET_DIR/freebsd-package"

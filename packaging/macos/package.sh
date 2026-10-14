@@ -58,7 +58,7 @@ echo "==> SoundCraft $VERSION for macOS ($ARCH), identity: $IDENTITY, notarize: 
 if [ "$SKIP_BUILD" = 0 ]; then
   args=()
   for t in "${TARGETS[@]}"; do args+=(--target "$t"); done
-  (cd "$ROOT" && cargo build --release --locked -p soundcraft -p soundcraft-cli "${args[@]}")
+  (cd "$ROOT" && cargo build --release --locked -p horegdaw -p horegdaw-cli "${args[@]}")
 fi
 
 rm -rf "$WORK"
