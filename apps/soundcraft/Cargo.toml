@@ -5,7 +5,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-default-run = "horegdaw"
+default-run = "soundcraft"
 
 [lints]
 workspace = true

@@ -1712,24 +1712,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
-name = "horegdaw"
-version = "0.6.1"
-dependencies = [
- "eframe",
- "egui",
- "log",
- "muda",
- "objc2 0.6.5",
- "objc2-app-kit 0.3.2",
- "rfd",
- "serde_json",
- "soundcraft-engine",
- "soundcraft-playback",
- "soundcraft-ui-egui",
- "winresource",
-]
-
-[[package]]
 name = "icu_collections"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3609,6 +3591,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd538fb6910ac1099850255cf94a94df6551fbdd602454387d0adb2d1ca6dead"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "soundcraft"
+version = "0.6.1"
+dependencies = [
+ "eframe",
+ "egui",
+ "log",
+ "muda",
+ "objc2 0.6.5",
+ "objc2-app-kit 0.3.2",
+ "rfd",
+ "serde_json",
+ "soundcraft-engine",
+ "soundcraft-playback",
+ "soundcraft-ui-egui",
+ "winresource",
 ]
 
 [[package]]
