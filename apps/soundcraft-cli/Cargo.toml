@@ -1,5 +1,5 @@
 [package]
-name = "soundcraft-cli"
+name = "horegdaw-cli"
 description = "SoundCraft command line: headless editing, conversion, bounce, MCP server, app control"
 version.workspace = true
 edition.workspace = true
@@ -7,7 +7,7 @@ license.workspace = true
 publish = false
 
 [[bin]]
-name = "soundcraft-cli"
+name = "horegdaw-cli"
 path = "src/main.rs"
 
 [lints]

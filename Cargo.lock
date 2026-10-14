@@ -1712,6 +1712,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
+name = "horegdaw"
+version = "0.6.1"
+dependencies = [
+ "eframe",
+ "egui",
+ "log",
+ "muda",
+ "objc2 0.6.5",
+ "objc2-app-kit 0.3.2",
+ "rfd",
+ "serde_json",
+ "soundcraft-engine",
+ "soundcraft-playback",
+ "soundcraft-ui-egui",
+ "winresource",
+]
+
+[[package]]
+name = "horegdaw-cli"
+version = "0.6.1"
+dependencies = [
+ "serde_json",
+ "soundcraft-audio-io",
+ "soundcraft-automation",
+ "soundcraft-dsp",
+ "soundcraft-engine",
+]
+
+[[package]]
 name = "icu_collections"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3594,24 +3623,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "soundcraft"
-version = "0.6.1"
-dependencies = [
- "eframe",
- "egui",
- "log",
- "muda",
- "objc2 0.6.5",
- "objc2-app-kit 0.3.2",
- "rfd",
- "serde_json",
- "soundcraft-engine",
- "soundcraft-playback",
- "soundcraft-ui-egui",
- "winresource",
-]
-
-[[package]]
 name = "soundcraft-au-host"
 version = "0.6.1"
 dependencies = [
@@ -3654,17 +3665,6 @@ dependencies = [
  "soundcraft-dsp",
  "thiserror 2.0.21",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "soundcraft-cli"
-version = "0.6.1"
-dependencies = [
- "serde_json",
- "soundcraft-audio-io",
- "soundcraft-automation",
- "soundcraft-dsp",
- "soundcraft-engine",
 ]
 
 [[package]]

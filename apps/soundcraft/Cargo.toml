@@ -1,11 +1,11 @@
 [package]
-name = "soundcraft"
+name = "horegdaw"
 description = "HOREGDAW desktop app"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-default-run = "soundcraft"
+default-run = "horegdaw"
 
 [lints]
 workspace = true
