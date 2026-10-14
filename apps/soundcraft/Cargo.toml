@@ -1,5 +1,5 @@
 [package]
-name = "horegdaw"
+name = "soundcraft"
 description = "HOREGDAW desktop app"
 version.workspace = true
 edition.workspace = true
