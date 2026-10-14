@@ -86,7 +86,7 @@ impl eframe::App for App {
         };
         set_title(ctx, title);
     }
-    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut eframe::RawInput) {
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
         self.0.raw_input_hook(raw);
     }
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
