@@ -26,8 +26,8 @@
 
     <Icon Id="HoregdawIcon.ico" SourceFile="$(var.IconPath)" />
     <Property Id="ARPPRODUCTICON" Value="HoregdawIcon.ico" />
-    <Property Id="ARPURLINFOABOUT" Value="https://getartcraft.com/apps/soundcraft" />
-    <Property Id="ARPURLUPDATEINFO" Value="https://getartcraft.com/apps/soundcraft" />
+    <Property Id="ARPURLINFOABOUT" Value="https://getartcraft.com/apps/horegdaw" />
+    <Property Id="ARPURLUPDATEINFO" Value="https://getartcraft.com/apps/horegdaw" />
     <Property Id="ARPHELPLINK" Value="https://discord.gg/artcraft" />
 
     <StandardDirectory Id="ProgramFiles6432Folder">

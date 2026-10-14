@@ -4,21 +4,21 @@
 
 Summary
 
-- Project display name changed from "SoundCraft" to "HOREGDAW" in the UI and documentation.
+- Project display name changed from "HoregDAW" to "HOREGDAW" in the UI and documentation.
 - Internal packaging and executable identifiers updated to HOREGDAW where appropriate (desktop app, CLI, Windows installer WiX file, Linux .desktop / AppStream / MIME metadata).
 - README, assets/app-icon README and packaging web README updated to use HOREGDAW.
-- apps/soundcraft package renamed to `horegdaw` (Cargo.toml) and apps/soundcraft-cli renamed to `horegdaw-cli`.
-- Desktop and packaging metadata updated: packaging/windows/soundcraft.wxs -> now references HOREGDAW, packaging/linux desktop/metainfo/mime updated to HOREGDAW ids and binary names.
+- apps/horegdaw package renamed to `horegdaw` (Cargo.toml) and apps/horegdaw-cli renamed to `horegdaw-cli`.
+- Desktop and packaging metadata updated: packaging/windows/horegdaw.wxs -> now references HOREGDAW, packaging/linux desktop/metainfo/mime updated to HOREGDAW ids and binary names.
 
 Notes and migration guidance
 
 - Executable names changed:
-  - soundcraft -> horegdaw
-  - soundcraft-cli -> horegdaw-cli
+  - horegdaw -> horegdaw
+  - horegdaw-cli -> horegdaw-cli
 
   After installing a packaged build, run `horegdaw --version` and `horegdaw-cli --help` as the new commands.
 
-- Many internal crate/package names remain `soundcraft-*` (engine, dsp, ui-egui, etc.). Only the user-facing app package and CLI were renamed in this pass. If you want to rename all crate names, that requires a coordinated workspace refactor.
+- Many internal crate/package names remain `horegdaw-*` (engine, dsp, ui-egui, etc.). Only the user-facing app package and CLI were renamed in this pass. If you want to rename all crate names, that requires a coordinated workspace refactor.
 
 - Some environment variables and configuration keys still refer to SOUNDCRAFT in code and docs (for example `SOUNDCRAFT_NO_PREFS` and config directories). I intentionally left these in place where they control internal behavior to avoid breaking existing runtime preferences and CI, but we can rename them in a follow-up if desired. Search the repo for `SOUNDCRAFT_` to find remaining usages.
 
@@ -31,13 +31,13 @@ Files changed (high level)
 
 - README.md
 - AGENTS.md (mentioned HOREGDAW already)
-- apps/soundcraft/Cargo.toml -> apps/soundcraft/Cargo.toml (name changed to `horegdaw`)
-- apps/soundcraft-cli/Cargo.toml -> (name changed to `horegdaw-cli`)
-- apps/soundcraft/src/main.rs (title and window/app strings)
-- packaging/windows/soundcraft.wxs (renamed identifiers inside to HOREGDAW)
-- packaging/linux/ai.storyteller.soundcraft.desktop -> updated to use HOREGDAW values
-- packaging/linux/ai.storyteller.soundcraft.metainfo.xml.in -> updated ids/names
-- packaging/linux/ai.storyteller.soundcraft.mime.xml -> updated mime type and comment
+- apps/horegdaw/Cargo.toml -> apps/horegdaw/Cargo.toml (name changed to `horegdaw`)
+- apps/horegdaw-cli/Cargo.toml -> (name changed to `horegdaw-cli`)
+- apps/horegdaw/src/main.rs (title and window/app strings)
+- packaging/windows/horegdaw.wxs (renamed identifiers inside to HOREGDAW)
+- packaging/linux/ai.storyteller.horegdaw.desktop -> updated to use HOREGDAW values
+- packaging/linux/ai.storyteller.horegdaw.metainfo.xml.in -> updated ids/names
+- packaging/linux/ai.storyteller.horegdaw.mime.xml -> updated mime type and comment
 - assets/app-icon/README.md
 - packaging/web/README.md
 

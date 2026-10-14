@@ -1,12 +1,12 @@
 //! HOREGDAW desktop app.
 //!
-//! Usage: `soundcraft [--demo] [--control <port>] [--no-audio] [session.scraft | audio files…]`
+//! Usage: `horegdaw [--demo] [--control <port>] [--no-audio] [session.scraft | audio files…]`
 //!
 //! `--control <port>` (or `SOUNDCRAFT_CONTROL_PORT`) starts a localhost JSON-lines control server
 //! (`0` picks a free port and prints it): `{"id":1,"method":"ui.inspect","params":{}}` →
-//! `{"id":1,"ok":true,"result":…}`. See `soundcraft_ui_egui::control` for the methods.
+//! `{"id":1,"ok":true,"result":…}`. See `horegdaw_ui_egui::control` for the methods.
 //!
-//! `log` records go to standard error and `<settings dir>/logs/soundcraft.log` (`RUST_LOG` sets the
+//! `log` records go to standard error and `<settings dir>/logs/horegdaw.log` (`RUST_LOG` sets the
 //! levels); see [`logging`].
 #![cfg_attr(all(target_os = "windows", not(debug_assertions)), windows_subsystem = "windows")]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
@@ -19,8 +19,8 @@ mod logging;
 #[cfg(target_os = "macos")]
 mod native_menu;
 
-use soundcraft_engine::Engine;
-use soundcraft_ui_egui::{Services, SoundApp, UiState, dialogs};
+use horegdaw_engine::Engine;
+use horegdaw_ui_egui::{Services, SoundApp, UiState, dialogs};
 use std::sync::Arc;
 
 struct App(SoundApp, Option<&'static logging::AppLogger>, #[cfg(target_os = "macos")] Option<native_menu::NativeMenu>);
@@ -61,7 +61,7 @@ impl eframe::App for App {
         } else if ctx.input(|i| i.viewport().close_requested()) && dialogs::ask_to_save(&mut self.0, "app.quit", &serde_json::json!({})) {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
         }
-        soundcraft_ui_egui::fit_window_to_screen(ctx);
+        horegdaw_ui_egui::fit_window_to_screen(ctx);
         let (inner, maximized) = ctx.input(|i| (i.viewport().inner_rect, i.viewport().maximized.unwrap_or(false)));
         self.0.ui.window_maximized = maximized;
         if let Some(r) = inner.filter(|_| !maximized) {
@@ -79,7 +79,7 @@ impl eframe::App for App {
                 "{}{} — HOREGDAW — {}",
                 self.0.engine.session().name,
                 if self.0.engine.is_dirty() { " *" } else { "" },
-                if self.0.ui.window == soundcraft_ui_egui::MainWindow::Edit { "Edit" } else { "Mix" }
+                if self.0.ui.window == horegdaw_ui_egui::MainWindow::Edit { "Edit" } else { "Mix" }
             )
         } else {
             format!("{} — HOREGDAW", self.0.engine.session().name)
@@ -101,7 +101,7 @@ impl eframe::App for App {
         // The system Quit (⌘Q) ends the process from inside the event loop, so `run_native` never
         // returns: release the player's plugin instances and shut plugin hosting down here.
         self.0.player = None;
-        soundcraft_engine::shutdown_plugin_hosts();
+        horegdaw_engine::shutdown_plugin_hosts();
     }
 }
 
@@ -197,9 +197,9 @@ fn services() -> Services {
 /// elsewhere the full tile. Regenerate with `packaging/icons.sh`.
 fn app_icon() -> Option<egui::IconData> {
     #[cfg(target_os = "macos")]
-    let png: &[u8] = include_bytes!("../../../assets/app-icon/soundcraft-macos-512.png");
+    let png: &[u8] = include_bytes!("../../../assets/app-icon/horegdaw-macos-512.png");
     #[cfg(not(target_os = "macos"))]
-    let png: &[u8] = include_bytes!("../../../assets/app-icon/hicolor/256x256/apps/ai.storyteller.soundcraft.png");
+    let png: &[u8] = include_bytes!("../../../assets/app-icon/hicolor/256x256/apps/ai.storyteller.horegdaw.png");
     eframe::icon_data::from_png_bytes(png).map_err(|e| log::warn!("app icon: {e}")).ok()
 }
 
@@ -241,7 +241,7 @@ fn main() -> eframe::Result {
         }
     }
 
-    let engine = if demo { soundcraft_engine::demo::demo_engine() } else { Engine::default() };
+    let engine = if demo { horegdaw_engine::demo::demo_engine() } else { Engine::default() };
     let prefs = load_prefs().unwrap_or_default();
     let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -250,7 +250,7 @@ fn main() -> eframe::Result {
             .with_maximized(prefs.window_maximized)
             .with_min_inner_size([960.0, 600.0])
             .with_drag_and_drop(true)
-            .with_app_id("ai.storyteller.soundcraft"),
+            .with_app_id("ai.storyteller.horegdaw"),
         ..Default::default()
     };
     if let Some(icon) = app_icon() {
@@ -263,10 +263,10 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |cc| {
             let player =
-                if no_audio { None } else { Some(soundcraft_playback::Player::with_config(Arc::new(engine.session().clone()), &prefs.audio)) };
+                if no_audio { None } else { Some(horegdaw_playback::Player::with_config(Arc::new(engine.session().clone()), &prefs.audio)) };
             let mut app = SoundApp::new(engine, player, services());
             app.autosave_dir = prefs_path().and_then(|p| p.parent().map(|d| d.join("Autosave")));
-            app.leftovers = app.autosave_dir.as_deref().map(soundcraft_engine::autosave::leftovers).unwrap_or_default();
+            app.leftovers = app.autosave_dir.as_deref().map(horegdaw_engine::autosave::leftovers).unwrap_or_default();
             app.preset_dir = prefs_path().and_then(|p| p.parent().map(|d| d.join("Presets")));
             app.extra.ui_scale = prefs.ui_scale;
             app.ui = prefs;

@@ -10,7 +10,7 @@ enum Platform {
     Other,
 }
 
-/// SoundCraft's settings folder. A nonempty `$SOUNDCRAFT_CONFIG_DIR` overrides the platform default.
+/// HoregDAW's settings folder. A nonempty `$SOUNDCRAFT_CONFIG_DIR` overrides the platform default.
 /// The override is the complete directory; no application-name suffix is appended. An explicitly
 /// empty value disables the settings directory instead of falling back to a personal profile.
 pub fn config_dir() -> Option<PathBuf> {
@@ -29,20 +29,20 @@ fn config_dir_with(platform: Platform, env: impl Fn(&str) -> Option<OsString>) -
         return (!dir.is_empty()).then(|| PathBuf::from(dir));
     }
     match platform {
-        Platform::Mac => env("HOME").map(|h| PathBuf::from(h).join("Library/Application Support/SoundCraft")),
-        Platform::Windows => env("APPDATA").map(|a| PathBuf::from(a).join("SoundCraft")),
+        Platform::Mac => env("HOME").map(|h| PathBuf::from(h).join("Library/Application Support/HoregDAW")),
+        Platform::Windows => env("APPDATA").map(|a| PathBuf::from(a).join("HoregDAW")),
         Platform::Other => {
-            env("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| env("HOME").map(|h| PathBuf::from(h).join(".config"))).map(|c| c.join("soundcraft"))
+            env("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| env("HOME").map(|h| PathBuf::from(h).join(".config"))).map(|c| c.join("horegdaw"))
         }
     }
 }
 
 /// Read bounded settings, recovering unreadable docking metadata independently of other settings.
-pub fn load_ui(path: &std::path::Path) -> Result<Option<soundcraft_ui_egui::UiState>, String> {
+pub fn load_ui(path: &std::path::Path) -> Result<Option<horegdaw_ui_egui::UiState>, String> {
     read_ui(path, true)
 }
 
-fn read_ui(path: &std::path::Path, recover_docking: bool) -> Result<Option<soundcraft_ui_egui::UiState>, String> {
+fn read_ui(path: &std::path::Path, recover_docking: bool) -> Result<Option<horegdaw_ui_egui::UiState>, String> {
     use std::io::Read as _;
     let file = match std::fs::File::open(path) {
         Ok(file) => file,
@@ -58,7 +58,7 @@ fn read_ui(path: &std::path::Path, recover_docking: bool) -> Result<Option<sound
     if recover_docking && let Some(fields) = saved.as_object_mut() {
         for (field, mix) in [("docking", false), ("mix_docking", true)] {
             let unreadable =
-                fields.get(field).is_some_and(|value| match serde_json::from_value::<soundcraft_ui_egui::docking::Workspace>(value.clone()) {
+                fields.get(field).is_some_and(|value| match serde_json::from_value::<horegdaw_ui_egui::docking::Workspace>(value.clone()) {
                     Ok(workspace) => if mix { workspace.validate_mix() } else { workspace.validate() }.is_err(),
                     Err(_) => true,
                 });
@@ -67,7 +67,7 @@ fn read_ui(path: &std::path::Path, recover_docking: bool) -> Result<Option<sound
             }
         }
     }
-    let state: soundcraft_ui_egui::UiState = serde_json::from_value(saved).map_err(|error| format!("Settings could not be restored: {error}"))?;
+    let state: horegdaw_ui_egui::UiState = serde_json::from_value(saved).map_err(|error| format!("Settings could not be restored: {error}"))?;
     state.docking.validate()?;
     state.mix_docking.validate_mix()?;
     Ok(Some(state))
@@ -76,7 +76,7 @@ fn read_ui(path: &std::path::Path, recover_docking: bool) -> Result<Option<sound
 const MAX_UI_BYTES: u64 = 4 * 1024 * 1024;
 
 /// Write settings atomically. Preserve an unreadable or malformed existing file for recovery.
-pub fn save_ui(path: &std::path::Path, ui: &soundcraft_ui_egui::UiState) -> Result<(), String> {
+pub fn save_ui(path: &std::path::Path, ui: &horegdaw_ui_egui::UiState) -> Result<(), String> {
     use std::io::Write as _;
     // Loading can recover a future layout for this session, but saving must preserve its source.
     read_ui(path, false)?;
@@ -113,28 +113,28 @@ mod config_tests {
 
     #[test]
     fn native_file_reload_preserves_edit_mix_and_hidden_floating_panels() {
-        use soundcraft_ui_egui::{MainWindow, Services, SoundApp, docking::Panel};
-        let directory = std::env::temp_dir().join(format!("soundcraft-dock-prefs-{}", std::process::id()));
+        use horegdaw_ui_egui::{MainWindow, Services, SoundApp, docking::Panel};
+        let directory = std::env::temp_dir().join(format!("horegdaw-dock-prefs-{}", std::process::id()));
         let path = directory.join("ui.json");
         let _ = std::fs::remove_dir_all(&directory);
-        let mut app = SoundApp::new(soundcraft_engine::Engine::default(), None, Services::default());
+        let mut app = SoundApp::new(horegdaw_engine::Engine::default(), None, Services::default());
         app.run("ui.dock", serde_json::json!({"operation":"float","panel":"tracks","rect":[80,90,260,400]})).unwrap();
         app.run("ui.dock", serde_json::json!({"operation":"close","panel":"tracks"})).unwrap();
-        app.ui.theme = soundcraft_ui_egui::theme::ThemeMode::Light;
+        app.ui.theme = horegdaw_ui_egui::theme::ThemeMode::Light;
         let edit = serde_json::to_value(&app.ui.docking).unwrap();
         app.ui.window = MainWindow::Mix;
         app.run("ui.dock", serde_json::json!({"operation":"open","panel":"tracks"})).unwrap();
         app.run("ui.dock", serde_json::json!({"operation":"float","panel":"tracks","rect":[140,150,280,420]})).unwrap();
         save_ui(&path, &app.ui).unwrap();
         app.ui = load_ui(&path).unwrap().unwrap();
-        assert_eq!(app.ui.theme, soundcraft_ui_egui::theme::ThemeMode::Light);
+        assert_eq!(app.ui.theme, horegdaw_ui_egui::theme::ThemeMode::Light);
         assert_eq!(serde_json::to_value(&app.ui.docking).unwrap(), edit);
         assert_eq!(app.ui.mix_docking.layout.floating.iter().find(|g| g.panels.contains(&Panel::Tracks)).unwrap().rect, [140.0, 150.0, 280.0, 420.0]);
         app.ui.window = MainWindow::Edit;
         app.run("ui.dock", serde_json::json!({"operation":"open","panel":"tracks"})).unwrap();
         assert_eq!(app.ui.docking.layout.floating.iter().find(|g| g.panels.contains(&Panel::Tracks)).unwrap().rect, [80.0, 90.0, 260.0, 400.0]);
         let mut invalid_mix = app.ui.clone();
-        invalid_mix.mix_docking = soundcraft_ui_egui::docking::Workspace::default();
+        invalid_mix.mix_docking = horegdaw_ui_egui::docking::Workspace::default();
         let invalid_bytes = serde_json::to_vec(&invalid_mix).unwrap();
         std::fs::write(&path, &invalid_bytes).unwrap();
         let recovered = load_ui(&path).unwrap().unwrap();
@@ -152,19 +152,19 @@ mod config_tests {
 
     #[test]
     fn future_edit_and_mix_layouts_preserve_other_preferences_and_the_original_file() {
-        use soundcraft_ui_egui::{Services, SoundApp};
-        let directory = std::env::temp_dir().join(format!("soundcraft-future-dock-prefs-{}", std::process::id()));
+        use horegdaw_ui_egui::{Services, SoundApp};
+        let directory = std::env::temp_dir().join(format!("horegdaw-future-dock-prefs-{}", std::process::id()));
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory.join("ui.json");
-        let mut app = SoundApp::new(soundcraft_engine::Engine::default(), None, Services::default());
+        let mut app = SoundApp::new(horegdaw_engine::Engine::default(), None, Services::default());
         app.run("ui.dock", serde_json::json!({"operation":"float","panel":"tracks","rect":[80,90,260,400]})).unwrap();
-        app.ui.theme = soundcraft_ui_egui::theme::ThemeMode::Light;
+        app.ui.theme = horegdaw_ui_egui::theme::ThemeMode::Light;
         app.ui.narrow_mix = true;
         for field in ["docking", "mix_docking"] {
             for invalid in [serde_json::json!({"layout":{"root":{"FutureLayout":{}}}}), serde_json::json!(false)] {
                 let mut saved = serde_json::to_value(&app.ui).unwrap();
                 saved[field] = invalid;
-                assert!(serde_json::from_value::<soundcraft_ui_egui::UiState>(saved.clone()).is_err());
+                assert!(serde_json::from_value::<horegdaw_ui_egui::UiState>(saved.clone()).is_err());
                 let bytes = serde_json::to_vec(&saved).unwrap();
                 std::fs::write(&path, &bytes).unwrap();
                 let recovered = load_ui(&path).unwrap().unwrap();
@@ -183,13 +183,13 @@ mod config_tests {
 
     #[test]
     fn oversized_settings_are_rejected_and_preserved() {
-        let directory = std::env::temp_dir().join(format!("soundcraft-bounded-prefs-{}", std::process::id()));
+        let directory = std::env::temp_dir().join(format!("horegdaw-bounded-prefs-{}", std::process::id()));
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory.join("ui.json");
         let bytes = vec![b' '; MAX_UI_BYTES as usize + 1];
         std::fs::write(&path, &bytes).unwrap();
         assert!(load_ui(&path).is_err());
-        assert!(save_ui(&path, &soundcraft_ui_egui::UiState::default()).is_err());
+        assert!(save_ui(&path, &horegdaw_ui_egui::UiState::default()).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), bytes);
         std::fs::remove_dir_all(directory).unwrap();
     }
@@ -225,10 +225,10 @@ mod config_tests {
     #[test]
     fn config_unset_override_keeps_platform_defaults() {
         let vars = [("HOME", "/user"), ("APPDATA", "/roaming"), ("XDG_CONFIG_HOME", "/xdg")];
-        assert_eq!(resolve(Platform::Mac, &vars), Some(PathBuf::from("/user/Library/Application Support/SoundCraft")));
-        assert_eq!(resolve(Platform::Windows, &vars), Some(PathBuf::from("/roaming/SoundCraft")));
-        assert_eq!(resolve(Platform::Other, &vars), Some(PathBuf::from("/xdg/soundcraft")));
-        assert_eq!(resolve(Platform::Other, &[("HOME", "/user")]), Some(PathBuf::from("/user/.config/soundcraft")));
+        assert_eq!(resolve(Platform::Mac, &vars), Some(PathBuf::from("/user/Library/Application Support/HoregDAW")));
+        assert_eq!(resolve(Platform::Windows, &vars), Some(PathBuf::from("/roaming/HoregDAW")));
+        assert_eq!(resolve(Platform::Other, &vars), Some(PathBuf::from("/xdg/horegdaw")));
+        assert_eq!(resolve(Platform::Other, &[("HOME", "/user")]), Some(PathBuf::from("/user/.config/horegdaw")));
         for platform in [Platform::Mac, Platform::Windows, Platform::Other] {
             assert_eq!(resolve(platform, &[]), None);
         }

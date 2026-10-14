@@ -39,9 +39,9 @@ and, at runtime, the operating system's own UI fonts when available (never redis
 | `docs/brand/artcraft-mark-black.png` | HOREG Team | craftrules `assets/brand/` | HOREG brand terms |
 | `assets/app-icon/icon.svg` | HOREG contributors | original (hand-placed SVG paths; placeholder app icon) | MIT OR Apache-2.0 |
 | `packaging/macos/dmg/` (all files) | @XusBadia | original (macOS DMG window background and layout, from the app icon; see `packaging/macos/dmg/README.md`) | MIT OR Apache-2.0 |
-| `assets/app-icon/soundcraft-1024.png` | HOREG contributors | original, rendered from `icon.svg` | MIT OR Apache-2.0 |
-| `assets/app-icon/soundcraft-macos-512.png` | HOREG contributors | original, rendered from `icon.svg` | MIT OR Apache-2.0 |
-| `assets/app-icon/soundcraft.icns` | HOREG contributors | original, rendered from `icon.svg` | MIT OR Apache-2.0 |
-| `assets/app-icon/soundcraft.ico` | HOREG contributors | original, rendered from `icon.svg` | MIT OR Apache-2.0 |
+| `assets/app-icon/horegdaw-1024.png` | HOREG contributors | original, rendered from `icon.svg` | MIT OR Apache-2.0 |
+| `assets/app-icon/horegdaw-macos-512.png` | HOREG contributors | original, rendered from `icon.svg` | MIT OR Apache-2.0 |
+| `assets/app-icon/horegdaw.icns` | HOREG contributors | original, rendered from `icon.svg` | MIT OR Apache-2.0 |
+| `assets/app-icon/horegdaw.ico` | HOREG contributors | original, rendered from `icon.svg` | MIT OR Apache-2.0 |
 | `assets/app-icon/hicolor/` | HOREG contributors | original, rendered from `icon.svg` (16–512 px PNGs and the scalable SVG) | MIT OR Apache-2.0 |
 | `docs/images/` | HOREG contributors | screenshots of HOREG rendered from the synthesised demo session | MIT OR Apache-2.0 |

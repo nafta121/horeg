@@ -4,15 +4,15 @@
 //! audio devices that failed to open or broke, plugins that refused their stored state or failed
 //! to activate, CLAP plugins' own log messages, decode errors on import) vanished. A launch from a
 //! desktop menu has no terminal, so the file is what a bug report can attach:
-//! `<settings dir>/logs/soundcraft.log`, beside `ui.json`, `Autosave/` and `Presets/`. Each start
-//! moves the previous log to `soundcraft.1.log` (and that one to `.2`), so the log of a run that
+//! `<settings dir>/logs/horegdaw.log`, beside `ui.json`, `Autosave/` and `Presets/`. Each start
+//! moves the previous log to `horegdaw.1.log` (and that one to `.2`), so the log of a run that
 //! crashed survives the next launch. Runs without preferences (`SOUNDCRAFT_NO_PREFS`, agents' test
 //! runs) log to standard error only, so they don't rotate away the user's own logs.
 //!
-//! Levels: `info` for SoundCraft's own crates, `warn` for everything else (wgpu and naga are
+//! Levels: `info` for HoregDAW's own crates, `warn` for everything else (wgpu and naga are
 //! chatty). `RUST_LOG` replaces that with env_logger-style directives: `debug`,
-//! `warn,soundcraft_mix=trace`, `wgpu_core=info`. A directive ending in `*` matches every target
-//! that starts with it (`soundcraft*=debug`).
+//! `warn,horegdaw_mix=trace`, `wgpu_core=info`. A directive ending in `*` matches every target
+//! that starts with it (`horegdaw*=debug`).
 //!
 //! Records logged before the settings directory is known are kept (up to [`MAX_PENDING`]) and
 //! written once the file is attached. Writing never panics: a file that can't be created or
@@ -22,7 +22,7 @@
 //! callback must never do. Code that runs on the audio thread logs anyway (the cpal error callback,
 //! the synth's full event queue, a hosted plugin's failed `process`, a CLAP plugin calling the
 //! host's `log` from its audio thread, the panic hook). So the cpal callbacks mark their thread
-//! (`soundcraft_playback::mark_audio_thread`; the mix engine carries the mark into the worker
+//! (`horegdaw_playback::mark_audio_thread`; the mix engine carries the mark into the worker
 //! threads that render strips for it), and a record from a marked thread is not written
 //! there: the first one is kept in a fixed buffer (`try_lock`, no allocation, never waits) and the
 //! rest are only counted (an atomic). Another thread writes them out: the UI thread every frame
@@ -39,17 +39,17 @@ use std::time::SystemTime;
 use log::LevelFilter;
 
 /// The current log file's name inside the log directory.
-pub const LOG_FILE: &str = "soundcraft.log";
+pub const LOG_FILE: &str = "horegdaw.log";
 /// The log directory inside the settings directory.
 pub const LOG_DIR: &str = "logs";
-/// How many previous logs are kept (`soundcraft.1.log` … `soundcraft.<KEEP>.log`).
+/// How many previous logs are kept (`horegdaw.1.log` … `horegdaw.<KEEP>.log`).
 pub const KEEP: usize = 2;
 /// The log file stops growing past this size (a runaway warning can't fill the disk).
 pub const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
 /// Records kept in memory until the log file is attached.
 pub const MAX_PENDING: usize = 512;
 /// The built-in filter when `RUST_LOG` is unset or empty.
-pub const DEFAULT_FILTER: &str = "warn,soundcraft*=info";
+pub const DEFAULT_FILTER: &str = "warn,horegdaw*=info";
 /// The longest message kept from the audio thread (longer ones are cut, marked with `…`).
 pub const REALTIME_MESSAGE_BYTES: usize = 480;
 /// The longest target kept from the audio thread.
@@ -137,7 +137,7 @@ fn civil_from_days(days: u64) -> (u64, u64, u64) {
 }
 
 fn numbered(dir: &Path, n: usize) -> PathBuf {
-    if n == 0 { dir.join(LOG_FILE) } else { dir.join(format!("soundcraft.{n}.log")) }
+    if n == 0 { dir.join(LOG_FILE) } else { dir.join(format!("horegdaw.{n}.log")) }
 }
 
 /// Shift the previous logs up one (`.log` → `.1.log` → … → `.<KEEP>.log`, the oldest dropped)
@@ -390,7 +390,7 @@ impl log::Log for AppLogger {
         if !self.enabled(record.metadata()) {
             return;
         }
-        if soundcraft_playback::on_audio_thread() {
+        if horegdaw_playback::on_audio_thread() {
             self.realtime.keep(record);
             return;
         }
@@ -428,7 +428,7 @@ mod tests {
 
     fn temp_dir(tag: &str) -> PathBuf {
         static N: AtomicUsize = AtomicUsize::new(0);
-        let d = std::env::temp_dir().join(format!("soundcraft-logging-{tag}-{}-{}", std::process::id(), N.fetch_add(1, Ordering::Relaxed)));
+        let d = std::env::temp_dir().join(format!("horegdaw-logging-{tag}-{}-{}", std::process::id(), N.fetch_add(1, Ordering::Relaxed)));
         let _ = std::fs::remove_dir_all(&d);
         d
     }
@@ -445,7 +445,7 @@ mod tests {
     fn on_audio_thread<T: Send>(f: impl FnOnce() -> T + Send) -> T {
         std::thread::scope(|s| {
             s.spawn(|| {
-                soundcraft_playback::mark_audio_thread();
+                horegdaw_playback::mark_audio_thread();
                 f()
             })
             .join()
@@ -454,12 +454,12 @@ mod tests {
     }
 
     #[test]
-    fn the_default_filter_shows_soundcraft_info_and_other_crates_warnings() {
+    fn the_default_filter_shows_horegdaw_info_and_other_crates_warnings() {
         let f = Filter::parse(DEFAULT_FILTER);
-        assert_eq!(f.level_for("soundcraft"), LevelFilter::Info);
-        assert_eq!(f.level_for("soundcraft::control_server"), LevelFilter::Info);
-        assert_eq!(f.level_for("soundcraft_playback"), LevelFilter::Info);
-        assert_eq!(f.level_for("soundcraft_clap_host::ffi"), LevelFilter::Info);
+        assert_eq!(f.level_for("horegdaw"), LevelFilter::Info);
+        assert_eq!(f.level_for("horegdaw::control_server"), LevelFilter::Info);
+        assert_eq!(f.level_for("horegdaw_playback"), LevelFilter::Info);
+        assert_eq!(f.level_for("horegdaw_clap_host::ffi"), LevelFilter::Info);
         assert_eq!(f.level_for("wgpu_core::device"), LevelFilter::Warn);
         assert_eq!(f.level_for("cpal"), LevelFilter::Warn);
         assert_eq!(f.max(), LevelFilter::Info);
@@ -467,17 +467,17 @@ mod tests {
 
     #[test]
     fn directives_follow_env_logger_and_the_most_specific_one_wins() {
-        let f = Filter::parse("info,wgpu_core=error,soundcraft_mix=trace,soundcraft_mix::pdc=off");
+        let f = Filter::parse("info,wgpu_core=error,horegdaw_mix=trace,horegdaw_mix::pdc=off");
         assert_eq!(f.level_for("eframe"), LevelFilter::Info);
         assert_eq!(f.level_for("wgpu_core::instance"), LevelFilter::Error);
-        assert_eq!(f.level_for("soundcraft_mix::render"), LevelFilter::Trace);
-        assert_eq!(f.level_for("soundcraft_mix::pdc"), LevelFilter::Off);
+        assert_eq!(f.level_for("horegdaw_mix::render"), LevelFilter::Trace);
+        assert_eq!(f.level_for("horegdaw_mix::pdc"), LevelFilter::Off);
         assert_eq!(f.max(), LevelFilter::Trace);
         // A module name is matched at `::` boundaries, not as a bare prefix.
         assert_eq!(f.level_for("wgpu_core_extra"), LevelFilter::Info);
         // A trailing `*` is a prefix.
-        assert_eq!(Filter::parse("warn,soundcraft_ui*=debug").level_for("soundcraft_ui_egui::mix_window"), LevelFilter::Debug);
-        assert_eq!(Filter::parse("warn,soundcraft_ui*=debug").level_for("soundcraft_engine"), LevelFilter::Warn);
+        assert_eq!(Filter::parse("warn,horegdaw_ui*=debug").level_for("horegdaw_ui_egui::mix_window"), LevelFilter::Debug);
+        assert_eq!(Filter::parse("warn,horegdaw_ui*=debug").level_for("horegdaw_engine"), LevelFilter::Warn);
         // A bare target name sets that target to the most verbose level, as env_logger does.
         assert_eq!(Filter::parse("naga").level_for("naga::front"), LevelFilter::Trace);
         assert_eq!(Filter::parse("naga").level_for("eframe"), LevelFilter::Error);
@@ -494,13 +494,13 @@ mod tests {
             "=",
             "==",
             "=debug",
-            "soundcraft=",
+            "horegdaw=",
             "nonsense=loud",
             "🦀=info",
             "*",
             "*=debug",
             "a=b=c",
-            "warn,,soundcraft=DEBUG",
+            "warn,,horegdaw=DEBUG",
             " \t ",
             "\u{0}",
             "é*=trace",
@@ -508,12 +508,12 @@ mod tests {
         ];
         for spec in specs {
             let f = Filter::parse(spec);
-            for target in ["soundcraft", "", "🦀", "é", "a::b"] {
+            for target in ["horegdaw", "", "🦀", "é", "a::b"] {
                 let _ = f.level_for(target);
             }
             let _ = f.max();
         }
-        assert_eq!(Filter::parse("warn,,soundcraft=DEBUG").level_for("soundcraft"), LevelFilter::Debug);
+        assert_eq!(Filter::parse("warn,,horegdaw=DEBUG").level_for("horegdaw"), LevelFilter::Debug);
         assert_eq!(Filter::parse("nonsense=loud").level_for("nonsense"), LevelFilter::Error);
         assert_eq!(Filter::parse("=debug").max(), LevelFilter::Error, "a directive without a name is skipped");
         assert_eq!(Filter::parse("*=debug").level_for("anything"), LevelFilter::Debug, "a lone `*` matches every target");
@@ -545,9 +545,9 @@ mod tests {
             std::fs::write(&path, format!("run {run}")).expect("write");
         }
         assert_eq!(read(&dir.join(LOG_FILE)), "run 4");
-        assert_eq!(read(&dir.join("soundcraft.1.log")), "run 3");
-        assert_eq!(read(&dir.join("soundcraft.2.log")), "run 2");
-        assert!(!dir.join("soundcraft.3.log").exists(), "only {KEEP} old logs are kept");
+        assert_eq!(read(&dir.join("horegdaw.1.log")), "run 3");
+        assert_eq!(read(&dir.join("horegdaw.2.log")), "run 2");
+        assert!(!dir.join("horegdaw.3.log").exists(), "only {KEEP} old logs are kept");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -568,10 +568,10 @@ mod tests {
                 "2026-10-08T07:59:17.728Z",
                 log::Level::Warn,
                 "main",
-                "soundcraft_mix",
+                "horegdaw_mix",
                 "eq_7band: the plugin did not accept its stored state"
             ),
-            "2026-10-08T07:59:17.728Z WARN  [main] soundcraft_mix: eq_7band: the plugin did not accept its stored state\n"
+            "2026-10-08T07:59:17.728Z WARN  [main] horegdaw_mix: eq_7band: the plugin did not accept its stored state\n"
         );
         // A multi-line message keeps its lines; the record still ends in exactly one newline.
         assert!(format_line("t", log::Level::Error, "w", "x", "a\nb\n").ends_with("x: a\nb\n"));
@@ -640,23 +640,23 @@ mod tests {
     fn the_logger_filters_records_and_writes_them_to_the_attached_file() {
         let dir = temp_dir("logger");
         let logger = AppLogger::new(Filter::parse(DEFAULT_FILTER), false);
-        record(&logger, log::Level::Info, "soundcraft", "SoundCraft starting");
+        record(&logger, log::Level::Info, "horegdaw", "HoregDAW starting");
         record(&logger, log::Level::Info, "wgpu_core::device", "too chatty");
         let path = logger.attach_dir(&dir).expect("attach");
         assert_eq!(path, dir.join(LOG_FILE));
         record(&logger, log::Level::Warn, "wgpu_hal::vulkan", "a real warning");
-        record(&logger, log::Level::Debug, "soundcraft", "below info");
+        record(&logger, log::Level::Debug, "horegdaw", "below info");
         let text = read(&path);
         let lines: Vec<&str> = text.lines().collect();
         assert_eq!(lines.len(), 2, "{text}");
-        assert!(lines.first().is_some_and(|l| l.contains(" INFO  [") && l.ends_with("soundcraft: SoundCraft starting")), "{text}");
+        assert!(lines.first().is_some_and(|l| l.contains(" INFO  [") && l.ends_with("horegdaw: HoregDAW starting")), "{text}");
         assert!(lines.get(1).is_some_and(|l| l.ends_with("wgpu_hal::vulkan: a real warning")), "{text}");
-        assert!(logger.enabled(&log::Metadata::builder().level(log::Level::Info).target("soundcraft_engine").build()));
+        assert!(logger.enabled(&log::Metadata::builder().level(log::Level::Info).target("horegdaw_engine").build()));
         assert!(!logger.enabled(&log::Metadata::builder().level(log::Level::Info).target("naga").build()));
         // A second launch rotates: the first log becomes `.1`.
         let second = AppLogger::new(Filter::parse(DEFAULT_FILTER), false);
         assert_eq!(second.attach_dir(&dir).expect("attach again"), dir.join(LOG_FILE));
-        assert_eq!(read(&dir.join("soundcraft.1.log")), text);
+        assert_eq!(read(&dir.join("horegdaw.1.log")), text);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -669,14 +669,14 @@ mod tests {
             for _ in 0..4 {
                 s.spawn(|| {
                     for _ in 0..100 {
-                        record(&logger, log::Level::Info, "soundcraft", "from a worker");
+                        record(&logger, log::Level::Info, "horegdaw", "from a worker");
                     }
                 });
             }
         });
         let text = read(&path);
         assert_eq!(text.lines().count(), 400);
-        assert!(text.lines().all(|l| l.ends_with("soundcraft: from a worker")), "{text}");
+        assert!(text.lines().all(|l| l.ends_with("horegdaw: from a worker")), "{text}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -685,7 +685,7 @@ mod tests {
         let dir = temp_dir("unusable");
         std::fs::write(&dir, "not a directory").expect("block");
         let logger = AppLogger::new(Filter::parse("info"), false);
-        record(&logger, log::Level::Info, "soundcraft", "kept for a file");
+        record(&logger, log::Level::Info, "horegdaw", "kept for a file");
         let e = logger.attach_dir(&dir).expect_err("a file is not a log directory");
         assert!(e.contains(&dir.display().to_string()), "{e}");
         record(&logger, log::Level::Error, "x", "still fine");
@@ -698,9 +698,9 @@ mod tests {
     #[test]
     fn a_run_without_a_log_file_keeps_nothing_for_one() {
         let logger = AppLogger::new(Filter::parse("info"), false);
-        record(&logger, log::Level::Info, "soundcraft", "early");
+        record(&logger, log::Level::Info, "horegdaw", "early");
         logger.no_file();
-        record(&logger, log::Level::Info, "soundcraft", "late");
+        record(&logger, log::Level::Info, "horegdaw", "late");
         let sink = logger.sink.lock().expect("sink");
         assert!(sink.file.is_none() && sink.pending.is_empty() && sink.dropped == 0);
     }
@@ -715,7 +715,7 @@ mod tests {
             panic!("poison the sink");
         }));
         assert!(logger.sink.is_poisoned());
-        record(&logger, log::Level::Info, "soundcraft", "after the panic");
+        record(&logger, log::Level::Info, "horegdaw", "after the panic");
         assert!(read(&path).contains("after the panic"));
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -732,8 +732,8 @@ mod tests {
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::scope(|s| {
             s.spawn(|| {
-                soundcraft_playback::mark_audio_thread();
-                record(&logger, log::Level::Warn, "soundcraft_playback", "audio stream error: device unplugged");
+                horegdaw_playback::mark_audio_thread();
+                record(&logger, log::Level::Warn, "horegdaw_playback", "audio stream error: device unplugged");
                 let _ = tx.send(());
             });
             let done = rx.recv_timeout(Duration::from_secs(10)).is_ok();
@@ -750,31 +750,31 @@ mod tests {
         let logger = AppLogger::new(Filter::parse(DEFAULT_FILTER), false);
         let path = logger.attach_dir(&dir).expect("attach");
         on_audio_thread(|| {
-            record(&logger, log::Level::Warn, "soundcraft_playback", "audio stream error: device unplugged");
+            record(&logger, log::Level::Warn, "horegdaw_playback", "audio stream error: device unplugged");
             for _ in 0..41 {
-                record(&logger, log::Level::Warn, "soundcraft_playback", "audio stream error: still unplugged");
+                record(&logger, log::Level::Warn, "horegdaw_playback", "audio stream error: still unplugged");
             }
             // Filtered out: neither kept nor counted.
-            record(&logger, log::Level::Debug, "soundcraft_clap_host::plugin", "process failed");
+            record(&logger, log::Level::Debug, "horegdaw_clap_host::plugin", "process failed");
         });
         assert_eq!(read(&path), "");
         logger.report_audio_thread();
         let text = read(&path);
         let lines: Vec<&str> = text.lines().collect();
         assert_eq!(lines.len(), 2, "{text}");
-        assert!(lines.first().is_some_and(|l| l.contains(" WARN  [audio] soundcraft_playback: audio stream error: device unplugged")), "{text}");
+        assert!(lines.first().is_some_and(|l| l.contains(" WARN  [audio] horegdaw_playback: audio stream error: device unplugged")), "{text}");
         assert!(lines.get(1).is_some_and(|l| l.contains("41 more log records from the realtime audio thread were not written")), "{text}");
         // Reported once.
         logger.report_audio_thread();
         assert_eq!(read(&path), text);
         // The next record from any other thread reports what the audio thread kept since, first.
-        on_audio_thread(|| record(&logger, log::Level::Error, "soundcraft_clap_host::ffi", "clap plugin: out of voices"));
-        record(&logger, log::Level::Info, "soundcraft", "UI thread");
+        on_audio_thread(|| record(&logger, log::Level::Error, "horegdaw_clap_host::ffi", "clap plugin: out of voices"));
+        record(&logger, log::Level::Info, "horegdaw", "UI thread");
         let text = read(&path);
         let tail: Vec<&str> = text.lines().skip(2).collect();
         assert_eq!(tail.len(), 2, "{text}");
-        assert!(tail.first().is_some_and(|l| l.contains(" ERROR [audio] soundcraft_clap_host::ffi: clap plugin: out of voices")), "{text}");
-        assert!(tail.get(1).is_some_and(|l| l.ends_with("soundcraft: UI thread")), "{text}");
+        assert!(tail.first().is_some_and(|l| l.contains(" ERROR [audio] horegdaw_clap_host::ffi: clap plugin: out of voices")), "{text}");
+        assert!(tail.get(1).is_some_and(|l| l.ends_with("horegdaw: UI thread")), "{text}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -784,10 +784,10 @@ mod tests {
         let logger = AppLogger::new(Filter::parse("info"), false);
         let path = logger.attach_dir(&dir).expect("attach");
         let long = "é".repeat(REALTIME_MESSAGE_BYTES);
-        on_audio_thread(|| record(&logger, log::Level::Warn, "soundcraft", &long));
+        on_audio_thread(|| record(&logger, log::Level::Warn, "horegdaw", &long));
         logger.report_audio_thread();
         let text = read(&path);
-        let message = text.split("soundcraft: ").nth(1).expect("message");
+        let message = text.split("horegdaw: ").nth(1).expect("message");
         assert!(message.ends_with("…\n"), "{text}");
         assert!(message.len() <= REALTIME_MESSAGE_BYTES + "…\n".len(), "{}", message.len());
         assert!(message.trim_end_matches(['…', '\n']).chars().all(|c| c == 'é'));

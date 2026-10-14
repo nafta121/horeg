@@ -21,7 +21,7 @@ Exactly three colours:
 ## Geometry
 
 A 512 × 512 viewBox, clipped to a rounded square with `rx=112`. Windows and Linux use the full
-tile. The macOS icons (`soundcraft.icns`, `soundcraft-macos-512.png`) sit on Apple's grid: an
+tile. The macOS icons (`horegdaw.icns`, `horegdaw-macos-512.png`) sit on Apple's grid: an
 824/1024 body with a transparent margin.
 
 ## Provenance and licence
@@ -34,11 +34,11 @@ traced or copied. MIT OR Apache-2.0, like the code (see `ATTRIBUTION.md`).
 | File | What it is |
 |---|---|
 | `icon.svg` | The canonical vector |
-| `soundcraft-1024.png` | 1024 px render |
-| `soundcraft-macos-512.png` | Runtime window/Dock icon on macOS (Apple grid margin) |
-| `soundcraft.icns` | macOS bundle icon |
-| `soundcraft.ico` | Windows icon (16–256 px), embedded in `soundcraft.exe` and used by the MSI |
-| `hicolor/<size>x<size>/apps/ai.storyteller.soundcraft.png` | Linux/FreeBSD icon theme, 16–512 px, plus `scalable/` |
+| `horegdaw-1024.png` | 1024 px render |
+| `horegdaw-macos-512.png` | Runtime window/Dock icon on macOS (Apple grid margin) |
+| `horegdaw.icns` | macOS bundle icon |
+| `horegdaw.ico` | Windows icon (16–256 px), embedded in `horegdaw.exe` and used by the MSI |
+| `hicolor/<size>x<size>/apps/ai.storyteller.horegdaw.png` | Linux/FreeBSD icon theme, 16–512 px, plus `scalable/` |
 
 Regenerate everything with `packaging/icons.sh` (needs `resvg`, and `iconutil` on macOS for the
 `.icns`).

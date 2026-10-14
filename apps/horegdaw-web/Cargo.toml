@@ -1,6 +1,6 @@
 [package]
-name = "soundcraft-web"
-description = "SoundCraft in the browser (eframe web runner, WebGPU with WebGL2 fallback, WebAudio playback)"
+name = "horegdaw-web"
+description = "HoregDAW in the browser (eframe web runner, WebGPU with WebGL2 fallback, WebAudio playback)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,14 +10,14 @@ publish = false
 workspace = true
 
 [[bin]]
-name = "soundcraft-web"
+name = "horegdaw-web"
 path = "src/main.rs"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-soundcraft-engine = { workspace = true }
-soundcraft-ui-egui = { workspace = true }
-soundcraft-playback = { workspace = true }
-soundcraft-model = { workspace = true }
+horegdaw-engine = { workspace = true }
+horegdaw-ui-egui = { workspace = true }
+horegdaw-playback = { workspace = true }
+horegdaw-model = { workspace = true }
 egui = { workspace = true }
 log = { workspace = true }
 serde_json = { workspace = true }

@@ -1,22 +1,22 @@
 # Hosting HOREGDAW for the web
 
-`soundcraft-web-<version>.zip` (from the GitHub release, or `packaging/web/package.sh`) holds a
-static site in `soundcraft-web-<version>/`:
+`horegdaw-web-<version>.zip` (from the GitHub release, or `packaging/web/package.sh`) holds a
+static site in `horegdaw-web-<version>/`:
 
 | File | What it is |
 |---|---|
 | `index.html` | The page. It loads everything through relative URLs. |
-| `soundcraft-web-<hash>.js` | wasm-bindgen glue (generated, ES module) |
-| `soundcraft-web-<hash>_bg.wasm` | The app (size: see the release; roughly a third of that with compression) |
+| `horegdaw-web-<hash>.js` | wasm-bindgen glue (generated, ES module) |
+| `horegdaw-web-<hash>_bg.wasm` | The app (size: see the release; roughly a third of that with compression) |
 | `_headers`, `.htaccess` | Sample header rules for Netlify/Cloudflare Pages and Apache |
 
 There is no server-side code. Upload the folder's contents anywhere that serves static files.
 
 ## Any path works
 
-All URLs in `index.html` are relative (`public_url = "./"` in `apps/soundcraft-web/Trunk.toml`),
+All URLs in `index.html` are relative (`public_url = "./"` in `apps/horegdaw-web/Trunk.toml`),
 so the site works at a domain root (`https://example.com/`), under a prefix
-(`https://example.com/tools/soundcraft/`) and from a CDN bucket. The asset names carry a content
+(`https://example.com/tools/horegdaw/`) and from a CDN bucket. The asset names carry a content
 hash, so they can be cached forever. Only `index.html` needs revalidation.
 
 ## Required server settings
@@ -40,7 +40,7 @@ hash, so they can be cached forever. Only `index.html` needs revalidation.
 
 ```html
 <iframe
-  src="https://example.com/soundcraft/"
+  src="https://example.com/horegdaw/"
   title="HOREGDAW"
   style="width: 100%; height: 720px; border: 0;"
   allow="fullscreen; autoplay; clipboard-read; clipboard-write"

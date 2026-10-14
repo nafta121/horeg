@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-  Build, sign and package SoundCraft for Windows.
+  Build, sign and package HoregDAW for Windows.
 
 .DESCRIPTION
   Produces, in $env:DIST (default: dist/release):
-    soundcraft-<version>-windows-<arch>.msi            per-machine installer (WiX v5)
-    soundcraft-<version>-windows-<arch>-portable.zip   horegdaw.exe + horegdaw-cli.exe
+    horegdaw-<version>-windows-<arch>.msi            per-machine installer (WiX v5)
+    horegdaw-<version>-windows-<arch>-portable.zip   horegdaw.exe + horegdaw-cli.exe
 
   The binaries link the C runtime statically (+crt-static), so neither the MSI nor the portable
   zip needs the Visual C++ redistributable. Signing is delegated to sign.ps1 (skipped with a
@@ -53,7 +53,7 @@ New-Item -ItemType Directory -Force -Path $Dist | Out-Null
 if (-not $env:SOUNDCRAFT_BUILD_SHA) { $env:SOUNDCRAFT_BUILD_SHA = (git -C $Root rev-parse HEAD 2>$null) }
 if (-not $env:SOUNDCRAFT_BUILD_DATE) { $env:SOUNDCRAFT_BUILD_DATE = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd') }
 
-Write-Output "SoundCraft $Version for Windows $Arch ($Target)"
+Write-Output "HoregDAW $Version for Windows $Arch ($Target)"
 
 if (-not $SkipBuild) {
   # Static CRT: no VC++ redistributable needed. Scoped to the target so host build scripts and
@@ -91,10 +91,10 @@ Copy-Item (Join-Path $Bin 'horegdaw.exe'), (Join-Path $Bin 'horegdaw-cli.exe') $
 & (Join-Path $PSScriptRoot 'sign.ps1') (Join-Path $Stage 'horegdaw.exe') (Join-Path $Stage 'horegdaw-cli.exe')
 
 # ---- MSI ---------------------------------------------------------------------------------------
-$Msi = Join-Path $Dist "soundcraft-$Version-windows-$Arch.msi"
+$Msi = Join-Path $Dist "horegdaw-$Version-windows-$Arch.msi"
 Invoke-Native 'wix build' {
-  wix build (Join-Path $PSScriptRoot 'soundcraft.wxs') -arch $Arch `
-    -d "Version=$MsiVersion" -d "BinDir=$Stage" -d "IconPath=$(Join-Path $Root 'assets\app-icon\soundcraft.ico')" `
+  wix build (Join-Path $PSScriptRoot 'horegdaw.wxs') -arch $Arch `
+    -d "Version=$MsiVersion" -d "BinDir=$Stage" -d "IconPath=$(Join-Path $Root 'assets\app-icon\horegdaw.ico')" `
     -o $Msi
 }
 # wix writes its debug symbols (.wixpdb) next to the MSI; keep them out of the release assets.
@@ -102,7 +102,7 @@ Remove-Item -Force -ErrorAction SilentlyContinue ([IO.Path]::ChangeExtension($Ms
 & (Join-Path $PSScriptRoot 'sign.ps1') $Msi
 
 # ---- portable zip ------------------------------------------------------------------------------
-$Portable = Join-Path $TargetDir "windows-package\soundcraft-$Version-windows-$Arch-portable"
+$Portable = Join-Path $TargetDir "windows-package\horegdaw-$Version-windows-$Arch-portable"
 Remove-Item -Recurse -Force $Portable -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Portable | Out-Null
 Copy-Item (Join-Path $Stage '*.exe') $Portable
@@ -110,7 +110,7 @@ foreach ($f in 'README.md', 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE'
   $p = Join-Path $Root $f
   if (Test-Path $p) { Copy-Item $p $Portable }
 }
-$Zip = Join-Path $Dist "soundcraft-$Version-windows-$Arch-portable.zip"
+$Zip = Join-Path $Dist "horegdaw-$Version-windows-$Arch-portable.zip"
 Remove-Item -Force $Zip -ErrorAction SilentlyContinue
 Compress-Archive -Path $Portable -DestinationPath $Zip
 
@@ -118,8 +118,8 @@ Compress-Archive -Path $Portable -DestinationPath $Zip
 # here; .github/workflows/windows-arm64.yml installs and runs it on ARM64 instead.
 $HostArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
 if ($Arch -ne 'arm64' -or $HostArch -eq 'arm64') {
-  Invoke-Native 'soundcraft-cli --version' { & (Join-Path $Stage 'horegdaw-cli.exe') --version }
+  Invoke-Native 'horegdaw-cli --version' { & (Join-Path $Stage 'horegdaw-cli.exe') --version }
 } else {
-  Write-Output "skipping soundcraft-cli --version: an $Arch build doesn't run on this $HostArch machine"
+  Write-Output "skipping horegdaw-cli --version: an $Arch build doesn't run on this $HostArch machine"
 }
 Get-Item $Msi, $Zip | Format-Table Name, Length

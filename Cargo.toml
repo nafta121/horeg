@@ -1,31 +1,31 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "apps/*", "apps/soundcraft", "xtask"]
-default-members = ["crates/*", "apps/*", "apps/soundcraft", "xtask"]
+members = ["crates/*", "apps/*", "apps/horegdaw", "xtask"]
+default-members = ["crates/*", "apps/*", "apps/horegdaw", "xtask"]
 
 [workspace.package]
 version = "0.6.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 rust-version = "1.90"
-repository = "https://github.com/storytold/soundcraft"
+repository = "https://github.com/storytold/horegdaw"
 
 [workspace.dependencies]
 # internal
-soundcraft-time = { path = "crates/time" }
-soundcraft-audio-io = { path = "crates/audio-io" }
-soundcraft-midi = { path = "crates/midi" }
-soundcraft-video = { path = "crates/video" }
-soundcraft-dsp = { path = "crates/dsp" }
-soundcraft-clap-host = { path = "crates/clap-host" }
-soundcraft-vst3-host = { path = "crates/vst3-host" }
-soundcraft-au-host = { path = "crates/au-host" }
-soundcraft-model = { path = "crates/model" }
-soundcraft-mix = { path = "crates/mix" }
-soundcraft-engine = { path = "crates/engine" }
-soundcraft-playback = { path = "crates/playback" }
-soundcraft-automation = { path = "crates/automation" }
-soundcraft-ui-egui = { path = "crates/ui-egui" }
+horegdaw-time = { path = "crates/time" }
+horegdaw-audio-io = { path = "crates/audio-io" }
+horegdaw-midi = { path = "crates/midi" }
+horegdaw-video = { path = "crates/video" }
+horegdaw-dsp = { path = "crates/dsp" }
+horegdaw-clap-host = { path = "crates/clap-host" }
+horegdaw-vst3-host = { path = "crates/vst3-host" }
+horegdaw-au-host = { path = "crates/au-host" }
+horegdaw-model = { path = "crates/model" }
+horegdaw-mix = { path = "crates/mix" }
+horegdaw-engine = { path = "crates/engine" }
+horegdaw-playback = { path = "crates/playback" }
+horegdaw-automation = { path = "crates/automation" }
+horegdaw-ui-egui = { path = "crates/ui-egui" }
 
 # foundation
 thiserror = "2"

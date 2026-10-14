@@ -1,4 +1,4 @@
-# Build with: trunk build --release   (from apps/soundcraft-web)
+# Build with: trunk build --release   (from apps/horegdaw-web)
 [build]
 target = "index.html"
 dist = "../../dist/web"

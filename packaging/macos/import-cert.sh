@@ -18,8 +18,8 @@ if [ -z "${APPLE_CERTIFICATE:-}" ]; then
 fi
 
 TMP="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
-KEYCHAIN="$TMP/soundcraft-signing.keychain-db"
-CERT="$TMP/soundcraft-signing.p12"
+KEYCHAIN="$TMP/horegdaw-signing.keychain-db"
+CERT="$TMP/horegdaw-signing.p12"
 KC_PASS="${KEYCHAIN_PASSWORD:-$(openssl rand -hex 24)}"
 
 trap 'rm -f "$CERT"' EXIT

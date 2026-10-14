@@ -15,7 +15,7 @@ The project name is now HOREGDAW in the user interface and documentation.
 ```bash
 git clone https://github.com/nafta121/horeg.git
 cd horeg
-cargo run --release -p soundcraft -- --demo
+cargo run --release -p horegdaw -- --demo
 ```
 
 ## Status

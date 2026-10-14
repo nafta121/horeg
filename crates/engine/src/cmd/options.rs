@@ -3,8 +3,8 @@
 use super::*;
 use crate::cmd;
 use serde_json::json;
-use soundcraft_model::{BitDepthSetting, EditState};
-use soundcraft_time::FrameRate;
+use horegdaw_model::{BitDepthSetting, EditState};
+use horegdaw_time::FrameRate;
 
 macro_rules! toggle {
     ($id:literal, $label:literal, [$($m:literal),*], $sc:expr, $field:ident) => {

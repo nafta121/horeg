@@ -1,11 +1,11 @@
 //! Loopback JSON-lines control server: one request per line, one reply per line.
-//! This is the transport the MCP server (`soundcraft-cli mcp --connect PORT`) wraps.
+//! This is the transport the MCP server (`horegdaw-cli mcp --connect PORT`) wraps.
 //!
 //! Lines are bounded ([`MAX_LINE`]): a longer one is refused and the connection closed, without
 //! buffering the rest. So is the number of connections served at once ([`MAX_CONNECTIONS`]).
 
 use serde_json::{Value, json};
-use soundcraft_ui_egui::ControlRequest;
+use horegdaw_ui_egui::ControlRequest;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
@@ -17,7 +17,7 @@ use std::time::Duration;
 /// carries is a plugin state for `mix.insert_state`: base64 of at most `b64::MAX_DECODED_BYTES`
 /// (64 MiB, so about 85 MiB of text). Room for that and 1 MiB of JSON around it; replies
 /// (screenshots) aren't bounded by this.
-const MAX_LINE: usize = soundcraft_engine::model::b64::MAX_DECODED_BYTES.div_ceil(3) * 4 + (1 << 20);
+const MAX_LINE: usize = horegdaw_engine::model::b64::MAX_DECODED_BYTES.div_ceil(3) * 4 + (1 << 20);
 // With MAX_CONNECTIONS, at most 1.5 GiB of request lines are buffered at once.
 const _: () = assert!(MAX_LINE <= 96 << 20);
 /// Connections served at once; further ones get an error line and are closed.
@@ -35,7 +35,7 @@ pub fn start(port: u16, ctx: egui::Context) -> Receiver<ControlRequest> {
     let actual = listener.local_addr().map(|a| a.port()).unwrap_or(port);
     log::info!("control server listening on 127.0.0.1:{actual}");
     println!("SOUNDCRAFT_CONTROL_PORT={actual}");
-    let spawned = std::thread::Builder::new().name("soundcraft-control".into()).spawn(move || accept_loop(listener, tx, ctx));
+    let spawned = std::thread::Builder::new().name("horegdaw-control".into()).spawn(move || accept_loop(listener, tx, ctx));
     if let Err(e) = spawned {
         log::error!("control thread failed: {e}");
     }
@@ -63,7 +63,7 @@ fn accept_loop(listener: TcpListener, tx: Sender<ControlRequest>, ctx: egui::Con
         let slot = Slot(Arc::clone(&open));
         let tx = tx.clone();
         let ctx = ctx.clone();
-        let _ = std::thread::Builder::new().name("soundcraft-control-conn".into()).spawn(move || {
+        let _ = std::thread::Builder::new().name("horegdaw-control-conn".into()).spawn(move || {
             let _slot = slot;
             serve(stream, tx, ctx);
         });
@@ -166,7 +166,7 @@ mod tests {
 
     #[test]
     fn the_largest_plugin_state_fits_in_a_line() {
-        let state = soundcraft_engine::model::b64::MAX_DECODED_BYTES.div_ceil(3) * 4;
+        let state = horegdaw_engine::model::b64::MAX_DECODED_BYTES.div_ceil(3) * 4;
         let request = json!({"id": 1, "method": "engine.execute", "params": {"command": "mix.insert_state", "params": {"track": "Audio 1", "slot": 0, "state": ""}}});
         assert!(state + request.to_string().len() <= MAX_LINE);
     }

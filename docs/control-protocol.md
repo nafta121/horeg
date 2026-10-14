@@ -1,16 +1,16 @@
 # Control protocol
 
-SoundCraft can be driven completely by other programs: scripts, test harnesses and AI agents.
+HoregDAW can be driven completely by other programs: scripts, test harnesses and AI agents.
 Every menu item, button, mouse gesture and keystroke maps to a **command** (or to synthetic
 input), and every command is reachable from:
 
 | Surface | How |
 |---|---|
-| Desktop app control channel | `soundcraft --control <port>` (`0` = pick a free port; printed as `SOUNDCRAFT_CONTROL_PORT=…`) |
-| CLI against a running app | `soundcraft-cli app --port <port> <method or command id> [JSON]` |
-| Headless CLI | `soundcraft-cli run --demo --cmd 'mix.volume={"track":"Kick","db":-6}' --bounce out.wav` |
-| MCP (headless) | `soundcraft-cli mcp [--demo]` |
-| MCP (bridged to the app) | `soundcraft-cli mcp --connect <port>` |
+| Desktop app control channel | `horegdaw --control <port>` (`0` = pick a free port; printed as `SOUNDCRAFT_CONTROL_PORT=…`) |
+| CLI against a running app | `horegdaw-cli app --port <port> <method or command id> [JSON]` |
+| Headless CLI | `horegdaw-cli run --demo --cmd 'mix.volume={"track":"Kick","db":-6}' --bounce out.wav` |
+| MCP (headless) | `horegdaw-cli mcp [--demo]` |
+| MCP (bridged to the app) | `horegdaw-cli mcp --connect <port>` |
 
 ## Isolated automation profiles
 
@@ -69,14 +69,14 @@ Errors: `{"id": 1, "ok": false, "error": "bad parameters for `mix.volume`: no tr
 ## Examples
 
 ```sh
-P=$(soundcraft --demo --control 0 | sed -n 's/SOUNDCRAFT_CONTROL_PORT=//p')   # or read stderr
-soundcraft-cli app --port $P mix.solo '{"track":"Bass"}'
-soundcraft-cli app --port $P transport.play
-soundcraft-cli app --port $P ui.screenshot '{"path":"/tmp/shot.png"}'
-soundcraft-cli app --port $P ui.menu.invoke '{"path":"Track > New..."}'
+P=$(horegdaw --demo --control 0 | sed -n 's/SOUNDCRAFT_CONTROL_PORT=//p')   # or read stderr
+horegdaw-cli app --port $P mix.solo '{"track":"Bass"}'
+horegdaw-cli app --port $P transport.play
+horegdaw-cli app --port $P ui.screenshot '{"path":"/tmp/shot.png"}'
+horegdaw-cli app --port $P ui.menu.invoke '{"path":"Track > New..."}'
 ```
 
-Offscreen (no window): `cargo run -p soundcraft-ui-egui --example ui_shot -- out.png script.jsonl`,
+Offscreen (no window): `cargo run -p horegdaw-ui-egui --example ui_shot -- out.png script.jsonl`,
 where each script line is a request (`{"method": …, "params": …}`), `{"shot": "path.png"}` or
 `{"steps": n}`. Use `--system-theme light|dark|none` to supply the initial OS appearance, and
 script events such as `{"system_theme": "dark"}` to change it on subsequent frames.

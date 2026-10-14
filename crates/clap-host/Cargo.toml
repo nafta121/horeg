@@ -1,6 +1,6 @@
 [package]
-name = "soundcraft-clap-host"
-description = "SoundCraft CLAP plugin host: scans, loads and runs third-party CLAP plugins behind the safe soundcraft-dsp Plugin trait (the only crate with unsafe code)"
+name = "horegdaw-clap-host"
+description = "HoregDAW CLAP plugin host: scans, loads and runs third-party CLAP plugins behind the safe horegdaw-dsp Plugin trait (the only crate with unsafe code)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,7 +8,7 @@ rust-version.workspace = true
 repository.workspace = true
 
 [dependencies]
-soundcraft-dsp.workspace = true
+horegdaw-dsp.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 log.workspace = true

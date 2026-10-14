@@ -1,17 +1,17 @@
 //! The browser shell: the eframe web runner around [`SoundApp`].
 
 use serde_json::json;
-use soundcraft_engine::{Engine, io};
-use soundcraft_ui_egui::dialogs::Dialog;
-use soundcraft_ui_egui::sampler_window::SampleRead;
-use soundcraft_ui_egui::{Services, SoundApp};
+use horegdaw_engine::{Engine, io};
+use horegdaw_ui_egui::dialogs::Dialog;
+use horegdaw_ui_egui::sampler_window::SampleRead;
+use horegdaw_ui_egui::{Services, SoundApp};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 use wasm_bindgen::JsCast as _;
 
-const CANVAS_ID: &str = "soundcraft_canvas";
-const LOADING_ID: &str = "soundcraft_loading";
+const CANVAS_ID: &str = "horegdaw_canvas";
+const LOADING_ID: &str = "horegdaw_loading";
 
 pub fn start() {
     eframe::WebLogger::init(log::LevelFilter::Info).ok();
@@ -37,10 +37,10 @@ pub fn start() {
                 options,
                 Box::new(move |cc| {
                     if let Some(rs) = &cc.wgpu_render_state {
-                        log::info!("soundcraft-web: wgpu backend {:?}", rs.adapter.get_info().backend);
+                        log::info!("horegdaw-web: wgpu backend {:?}", rs.adapter.get_info().backend);
                     }
-                    let engine = if query().contains("empty") { Engine::default() } else { soundcraft_engine::demo::demo_engine() };
-                    let player = soundcraft_playback::Player::new(Arc::new(engine.session().clone()));
+                    let engine = if query().contains("empty") { Engine::default() } else { horegdaw_engine::demo::demo_engine() };
+                    let player = horegdaw_playback::Player::new(Arc::new(engine.session().clone()));
                     let app = SoundApp::new(engine, Some(player), Services::default());
                     Ok(Box::new(WebShell { app, inbox: Rc::default(), samples: Rc::default() }))
                 }),
@@ -49,7 +49,7 @@ pub fn start() {
         if let Some(el) = document.get_element_by_id(LOADING_ID) {
             match result {
                 Ok(()) => el.remove(),
-                Err(e) => el.set_inner_html(&format!("<p>SoundCraft failed to start: {e:?}</p><p>A browser with WebGPU or WebGL2 is required.</p>")),
+                Err(e) => el.set_inner_html(&format!("<p>HoregDAW failed to start: {e:?}</p><p>A browser with WebGPU or WebGL2 is required.</p>")),
             }
         }
     });
@@ -67,7 +67,7 @@ enum Purpose {
     Midi,
 }
 
-const SESSION_EXTS: &[&str] = &[io::BUNDLE_EXTENSION, soundcraft_model::SESSION_EXTENSION];
+const SESSION_EXTS: &[&str] = &[io::BUNDLE_EXTENSION, horegdaw_model::SESSION_EXTENSION];
 const AUDIO_EXTS: &[&str] =
     &["wav", "wave", "bwf", "aif", "aiff", "aifc", "flac", "mp3", "ogg", "oga", "m4a", "m4b", "aac", "mp4", "caf", "mkv", "webm"];
 const MIDI_EXTS: &[&str] = &["mid", "midi", "smf"];
@@ -97,7 +97,7 @@ impl Purpose {
 
     fn filter(self) -> (&'static str, &'static [&'static str]) {
         match self {
-            Self::Session => ("SoundCraft Session", SESSION_EXTS),
+            Self::Session => ("HoregDAW Session", SESSION_EXTS),
             Self::Audio => ("Audio", AUDIO_EXTS),
             Self::Midi => ("MIDI", MIDI_EXTS),
         }
@@ -167,7 +167,7 @@ impl WebShell {
     }
 
     fn handle(&mut self, purpose: Purpose, name: &str, bytes: &[u8]) {
-        if matches!(purpose, Purpose::Session) && soundcraft_ui_egui::bounce::refuses_session_switch(&mut self.app) {
+        if matches!(purpose, Purpose::Session) && horegdaw_ui_egui::bounce::refuses_session_switch(&mut self.app) {
             return;
         }
         let e = &mut self.app.engine;

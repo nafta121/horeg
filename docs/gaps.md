@@ -7,7 +7,7 @@ real work in HOREGDAW. This is the work list: pick from the top. Rows marked **a
 fail the core-workflow gate in [`roadmap.md`](roadmap.md#alpha-gate) and keep HOREGDAW pre-alpha. Numbers and weights live in
 [`target-app-parity.md`](target-app-parity.md); the plan that orders these into milestones is
 [`roadmap.md`](roadmap.md). Hours are Opus 5.5 agent-hours (calibration in target-app-parity.md).
-Estimates marked "≈" are judgements; issue numbers are `storytold/soundcraft` GitHub issues.
+Estimates marked "≈" are judgements; issue numbers are `storytold/horegdaw` GitHub issues.
 
 When you close a gap, delete its entry (or shrink it) in the same PR, and bump the timestamp.
 
