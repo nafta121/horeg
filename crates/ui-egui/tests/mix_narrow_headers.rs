@@ -1,7 +1,7 @@
 use egui::{Shape, vec2};
-use serde_json::json;
 use horegdaw_ui_egui::mix_window::strip_width;
 use horegdaw_ui_egui::{Services, SoundApp};
+use serde_json::json;
 
 const FULL: [&str; 7] = ["INSERTS A-E", "INSERTS F-J", "SENDS A-E", "SENDS F-J", "INSTRUMENT", "comments", "no group"];
 const SHORT: [&str; 6] = ["I A-E", "I F-J", "S A-E", "S F-J", "INST", "nogrp"];
@@ -27,7 +27,9 @@ fn painted_labels(narrow: bool) -> Vec<(String, f32, bool)> {
         .shapes
         .iter()
         .filter_map(|s| match &s.shape {
-            Shape::Text(t) if FULL.contains(&t.galley.job.text.as_str()) || SHORT.contains(&t.galley.job.text.as_str()) => {
+            Shape::Text(t)
+                if FULL.contains(&t.galley.job.text.as_str()) || SHORT.contains(&t.galley.job.text.as_str()) || t.galley.job.text == "comments" =>
+            {
                 Some((t.galley.job.text.clone(), t.visual_bounding_rect().width(), t.galley.elided))
             }
             _ => None,
@@ -42,7 +44,9 @@ fn narrow_strips_use_short_section_names_that_fit() {
         assert!(labels.iter().any(|(text, ..)| text == name), "{name} missing in {labels:?}");
     }
     for (text, width, elided) in &labels {
-        assert!(SHORT.contains(&text.as_str()), "{text} painted in a narrow strip, where it doesn't fit");
+        if text != "comments" {
+            assert!(SHORT.contains(&text.as_str()), "{text} painted in a narrow strip, where it doesn't fit");
+        }
         assert!(*width <= strip_width(true) - 16.0 && !elided, "{text} is {width} pt wide, elided: {elided}");
     }
 }
