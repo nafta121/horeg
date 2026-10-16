@@ -40,6 +40,32 @@ fn expected_sf(d: BitDepth) -> SampleFormat {
     }
 }
 
+
+#[test]
+fn encode_wav_rf64_roundtrip_all_depths_and_layouts() {
+    for depth in DEPTHS {
+        for channels in [1, 2, 6] {
+            for dither in [false, true] {
+                let src = sine(48_000, channels, 4801);
+                let opts = EncodeOptions { format: FileFormat::Wav, bit_depth: depth, dither, bwf: None };
+                let bytes = encode_wav_rf64(&src, &opts).unwrap();
+                assert_eq!(&bytes[0..4], b"RF64");
+                let info = probe(&bytes, None).unwrap();
+                assert_eq!(info.format, FileFormat::Wav);
+                assert_eq!(info.sample_rate, 48_000);
+                assert_eq!(info.channels as usize, channels);
+                assert_eq!(info.frames, 4801);
+                assert_eq!(info.sample_format, expected_sf(depth));
+                let (dinfo, out) = decode(&bytes, None).unwrap();
+                assert_eq!(dinfo, info);
+                assert_eq!(out.sample_rate, 48_000);
+                let err = max_err(&src, &out);
+                assert!(err <= tolerance(depth, dither), "RF64 {depth:?} {channels}ch dither={dither}: err {err}");
+            }
+        }
+    }
+}
+
 #[test]
 fn wav_and_aiff_roundtrip_all_depths_and_layouts() {
     for format in [FileFormat::Wav, FileFormat::Aiff] {
