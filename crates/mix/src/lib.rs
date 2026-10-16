@@ -86,11 +86,11 @@ pub fn is_third_party(id: &str) -> bool {
 /// A third-party plugin instance a session needs: which slot, which plugin, how many channels,
 /// and the state to restore.
 #[derive(Debug, Clone, PartialEq)]
-pub struct InstanceSpec {
+pub struct InstanceSpec<'a> {
     pub track: TrackId,
     /// Insert slot index, or [`INSTRUMENT_SLOT`].
     pub slot: usize,
-    pub id: String,
+    pub id: &'a str,
     /// Channel count the instance is prepared for.
     pub ch: usize,
     /// Decoded [`Insert::state`](horegdaw_model::Insert::state).
@@ -108,7 +108,7 @@ pub struct PreparedInstance {
 
 /// Every third-party plugin slot (inserts and instruments) of a session, with the channel count
 /// [`MixEngine::sync`] prepares it for. Inactive and master tracks are included (they have strips).
-pub fn instance_specs(s: &Session) -> Vec<InstanceSpec> {
+pub fn instance_specs<'a>(s: &'a Session) -> Vec<InstanceSpec<'a>> {
     let main_ch = main_channels(s);
     let mut out = Vec::new();
     for t in &s.tracks {
@@ -117,13 +117,13 @@ pub fn instance_specs(s: &Session) -> Vec<InstanceSpec> {
             if let Some(ins) = ins
                 && is_third_party(&ins.plugin)
             {
-                out.push(InstanceSpec { track: t.id, slot: i, id: ins.plugin.clone(), ch, state: ins.state_bytes() });
+                out.push(InstanceSpec { track: t.id, slot: i, id: &ins.plugin, ch, state: ins.state_bytes() });
             }
         }
         if let Some(ins) = &t.instrument
             && is_third_party(&ins.plugin)
         {
-            out.push(InstanceSpec { track: t.id, slot: INSTRUMENT_SLOT, id: ins.plugin.clone(), ch: ch.max(2), state: ins.state_bytes() });
+            out.push(InstanceSpec { track: t.id, slot: INSTRUMENT_SLOT, id: &ins.plugin, ch: ch.max(2), state: ins.state_bytes() });
         }
     }
     out
@@ -2688,7 +2688,7 @@ mod tests {
         ins.params.insert("gain".into(), -6.0);
         s.track_mut(t).unwrap().mixer.inserts[0] = Some(ins);
         let specs = instance_specs(&s);
-        assert_eq!(specs, vec![InstanceSpec { track: t, slot: 0, id: "clap:test.fake".into(), ch: 1, state: None }]);
+        assert_eq!(specs, vec![InstanceSpec { track: t, slot: 0, id: "clap:test.fake", ch: 1, state: None }]);
         let mut eng = MixEngine::new(48_000.0, 512);
         eng.set_external_instances(true);
         // Nothing to adopt yet: the slot passes audio through (and sync never tried to load a
