@@ -9,7 +9,7 @@ use std::fs::File;
 use std::io::{Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use horegdaw_model::TrackId;
@@ -95,12 +95,14 @@ struct Shared {
     fault: AtomicU8,
     /// The first failure writing a take, until it's reported.
     failed: Mutex<Option<String>>,
+    /// Condvar to wake the writer thread instead of polling with sleep.
+    wake: (Mutex<()>, Condvar),
 }
 
 impl Shared {
     fn new(ring: CaptureRing) -> Shared {
         let (beats, fault, failed) = (AtomicU64::new(0), AtomicU8::new(0), Mutex::new(None));
-        Shared { armed: AtomicBool::new(false), ring, dropped: AtomicUsize::new(0), beats, fault, failed }
+        Shared { armed: AtomicBool::new(false), ring, dropped: AtomicUsize::new(0), beats, fault, failed, wake: (Mutex::new(()), Condvar::new()) }
     }
 
     /// Run the input callback's `work`. After a panic in it, the input is broken and does
@@ -119,6 +121,7 @@ impl Shared {
         let kept = if *owed == 0 { self.ring.push(data.len(), |i| data.get(i).copied().map_or(0.0, finite)) } else { 0 };
         *owed = owed.saturating_add(data.len() - kept);
         self.dropped.fetch_add(data.len() - kept, Ordering::Relaxed);
+        self.wake.1.notify_one();
     }
 }
 
@@ -310,6 +313,7 @@ impl Recorder {
 
     pub fn finish(&mut self) -> Takes {
         self.shared.armed.store(false, Ordering::Release);
+        self.shared.wake.1.notify_one();
         let (takes, problem) = self.writer.take().and_then(|(w, _)| w.join().ok()).unwrap_or_default();
         let lost = self.shared.dropped.swap(0, Ordering::Relaxed) / self.channels.max(1);
         let slow =
@@ -345,7 +349,9 @@ fn write_takes(shared: &Shared, mut takes: Vec<TakeWriter>, channels: usize) -> 
             header_written = Instant::now();
             takes.iter_mut().for_each(TakeWriter::write_header);
         }
-        std::thread::sleep(Duration::from_millis(10));
+        if let Ok(guard) = shared.wake.0.lock() {
+            let _ = shared.wake.1.wait_timeout(guard, Duration::from_millis(10));
+        }
     }
     let (mut done, mut problem) = (Vec::new(), None);
     for mut t in takes {

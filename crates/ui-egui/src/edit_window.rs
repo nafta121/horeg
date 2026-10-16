@@ -6,10 +6,10 @@ use crate::theme::{Tokens, bold, clip_colors, regular, rgb};
 use crate::widgets::{groove, level_pos, meter_pos, raised_key, shade};
 use crate::{Gesture, SoundApp, toolbar};
 use egui::{Align2, Color32, CornerRadius, Pos2, Rect, Sense, Shape, Stroke, StrokeKind, Ui, pos2, vec2};
-use serde_json::json;
 use horegdaw_engine::edit as ops;
 use horegdaw_model::{AutoParam, Clip, ClipContent, ClipId, EditMode, Session, Tool, Track, TrackHeight, TrackId, TrackKind};
 use horegdaw_time::{GridValue, NoteValue, Range, Samples, TimeFormat, format_position};
+use serde_json::json;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -572,11 +572,8 @@ fn draw_rulers(app: &mut SoundApp, ui: &mut Ui, area: Rect, tl: Rect, rulers: &[
             }
             "timecode2" => {
                 // A second timecode ruler at 25 fps when the session runs at another rate (or 30 otherwise).
-                let alt = if s.frame_rate == horegdaw_time::FrameRate::Fps25 {
-                    horegdaw_time::FrameRate::Fps30
-                } else {
-                    horegdaw_time::FrameRate::Fps25
-                };
+                let alt =
+                    if s.frame_rate == horegdaw_time::FrameRate::Fps25 { horegdaw_time::FrameRate::Fps30 } else { horegdaw_time::FrameRate::Fps25 };
                 timebase_ruler(ui, &painter, &s, tl, row, view, TimeFormat::Timecode, alt, i + 1 == rulers.len());
             }
             "markers" | "markers2" | "markers3" | "markers4" | "markers5" | "chords" => {
