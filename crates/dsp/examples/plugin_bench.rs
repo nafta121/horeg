@@ -11,11 +11,9 @@ fn main() {
         let t0 = Instant::now();
         let mut ph = 0.0f32;
         for _ in 0..(secs * 48_000 / 512) {
-            for c in io.iter_mut() {
-                for x in c.iter_mut() {
-                    ph += 0.031;
-                    *x = ph.sin() * 0.3;
-                }
+            for x in io.iter_mut().flatten() {
+                ph += 0.031;
+                *x = ph.sin() * 0.3;
             }
             if info.is_instrument {
                 p.note_on(0, 60, 100);
