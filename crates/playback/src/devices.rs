@@ -89,19 +89,29 @@ fn describe(d: &cpal::Device, default_name: Option<&str>, output: bool) -> Optio
     Some(DeviceInfo { is_default: default_name == Some(name.as_str()), name, max_channels, sample_rates, buffer_min, buffer_max })
 }
 
+fn catch_cpal<T>(f: impl FnOnce() -> Option<T>) -> Option<T> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).ok().flatten()
+}
+
+fn default_device(host: &cpal::Host, output: bool) -> Option<cpal::Device> {
+    catch_cpal(|| if output { host.default_output_device() } else { host.default_input_device() })
+}
+
 /// Every audio system on this machine with its devices. Enumerating can take a moment (some
 /// systems probe each device): call it when the settings window opens, not every frame.
 pub fn audio_systems() -> Vec<AudioSystem> {
-    let default_id = cpal::default_host().id();
+    let default_id = catch_cpal(|| Some(cpal::default_host().id()));
     cpal::available_hosts()
         .into_iter()
         .filter_map(|id| {
-            let host = cpal::host_from_id(id).ok()?;
-            let def_out = host.default_output_device().as_ref().and_then(device_name);
-            let def_in = host.default_input_device().as_ref().and_then(device_name);
-            let outputs = host.output_devices().map(|ds| ds.filter_map(|d| describe(&d, def_out.as_deref(), true)).collect()).unwrap_or_default();
-            let inputs = host.input_devices().map(|ds| ds.filter_map(|d| describe(&d, def_in.as_deref(), false)).collect()).unwrap_or_default();
-            Some(AudioSystem { name: id.name().to_string(), is_default: id == default_id, outputs, inputs })
+            let host = catch_cpal(|| cpal::host_from_id(id).ok())?;
+            let def_out = default_device(&host, true).as_ref().and_then(device_name);
+            let def_in = default_device(&host, false).as_ref().and_then(device_name);
+            let outputs = catch_cpal(|| host.output_devices().ok().map(|ds| ds.filter_map(|d| describe(&d, def_out.as_deref(), true)).collect()))
+                .unwrap_or_default();
+            let inputs = catch_cpal(|| host.input_devices().ok().map(|ds| ds.filter_map(|d| describe(&d, def_in.as_deref(), false)).collect()))
+                .unwrap_or_default();
+            Some(AudioSystem { name: id.name().to_string(), is_default: Some(id) == default_id, outputs, inputs })
         })
         .collect()
 }
@@ -111,7 +121,7 @@ pub(crate) fn host(cfg: &AudioConfig) -> cpal::Host {
     cfg.system
         .as_deref()
         .and_then(|want| cpal::available_hosts().into_iter().find(|id| id.name().eq_ignore_ascii_case(want)))
-        .and_then(|id| cpal::host_from_id(id).ok())
+        .and_then(|id| catch_cpal(|| cpal::host_from_id(id).ok()))
         .unwrap_or_else(|| {
             if let Some(s) = &cfg.system {
                 log::warn!("audio system `{s}` is not available; using the default");
@@ -123,14 +133,16 @@ pub(crate) fn host(cfg: &AudioConfig) -> cpal::Host {
 /// The named output (or input) device of `host`, else its default device.
 pub(crate) fn device(host: &cpal::Host, name: Option<&str>, output: bool) -> Option<cpal::Device> {
     if let Some(want) = name {
-        let found = if output { host.output_devices().ok() } else { host.input_devices().ok() }
-            .and_then(|mut ds| ds.find(|d| device_name(d).as_deref() == Some(want)));
+        let found = catch_cpal(|| {
+            if output { host.output_devices().ok() } else { host.input_devices().ok() }
+                .and_then(|mut ds| ds.find(|d| device_name(d).as_deref() == Some(want)))
+        });
         if found.is_some() {
             return found;
         }
         log::warn!("audio device `{want}` is not available; using the default");
     }
-    if output { host.default_output_device() } else { host.default_input_device() }
+    default_device(host, output)
 }
 
 /// The buffer to request: the chosen size when the device's range allows it, else the default.
@@ -192,7 +204,7 @@ mod tests {
         // No device with this name exists: the default (or none, on a machine without audio).
         let h = cpal::default_host();
         let fallback = device(&h, Some("No Such Device 1234"), true).as_ref().and_then(device_name);
-        assert_eq!(fallback, h.default_output_device().as_ref().and_then(device_name));
+        assert_eq!(fallback, default_device(&h, true).as_ref().and_then(device_name));
     }
 
     #[test]
