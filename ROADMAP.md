@@ -2,7 +2,7 @@
 
 **Stage: pre-alpha** · next: alpha, ~5% and ~110–180 h away (the alpha gate's three failing workflows)
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** minor (readiness by audience with hours to ~95 %) · **Target:** Avid Pro Tools Ultimate 2026.4.1
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-16 · **Change:** minor (hardware output routing, low-latency monitoring, record-offset compensation, and record-to-disk progress) · **Target:** Avid Pro Tools Ultimate 2026.4.1
 
 HOREGDAW is a clean-room, pure-Rust digital audio workstation that aims at full parity with
 Avid Pro Tools, and then beyond it: faster, open, scriptable and agent-controllable. This page is
@@ -34,13 +34,14 @@ Hours are Opus 5.5 agent wall-clock hours, calibrated on this repo's PRs; 60–7
 Detail: [target-app-parity.md](docs/target-app-parity.md#readiness-by-audience).
 
 **Why pre-alpha:** the core-workflow gate in [docs/roadmap.md](docs/roadmap.md#alpha-gate) fails.
-Editing, mixing, bouncing, and saving and reopening work end to end. But a Pro Tools user can't
-record from a chosen audio interface at a chosen buffer size (only the default devices, a fixed
-512-sample block, and takes held in RAM). They can't record MIDI from a keyboard (there is no
-MIDI device layer). And they can't bring a session in or hand one back (no AAF/OMF/`.ptx`).
-Readiness (~40 %) sits right at the alpha bar, but a gate failure keeps the app pre-alpha. The
-2026-10-07 estimate ("~65 % overall, 110–150 h to 100 %") counted feature presence. This one
-measures readiness and adds hardware, localization and field bug reports.
+Editing, mixing, bouncing, and saving and reopening work end to end. Audio interface selection,
+buffer size, hardware input/output channel routing, low-latency monitoring, latency compensation,
+and disk-backed recording and streaming work, while a single duplex clock and sample-accurate drift
+still remain (G-01). Users still can't record MIDI from a keyboard (there is no MIDI device layer).
+And they can't bring a session in or hand one back (no AAF/OMF/`.ptx`). Readiness (~40 %) sits right
+at the alpha bar, but a gate failure keeps the app pre-alpha. The 2026-10-07 estimate ("~65 %
+overall, 110–150 h to 100 %") counted feature presence. This one measures readiness and adds
+hardware, localization and field bug reports.
 
 ## By dimension
 
@@ -102,7 +103,7 @@ Other languages shipped: 0. Detail: [localization-parity.md](docs/localization-p
 
 Ranked; the alpha gate, the alpha checklist and the beta plan are in [docs/roadmap.md](docs/roadmap.md).
 
-1. **Alpha blocker:** audio interfaces: device and buffer-size choice, duplex stream, ASIO; record to disk (G-01, G-06). 35–55 h.
+1. **Alpha blocker:** audio interfaces: single duplex clock / drift compensation and external reference (G-01); large-file waveform overview decimation on disk (G-06). 15–25 h.
 2. **Alpha blocker:** MIDI devices: record from keyboards, play instruments live, output (G-02). 20–35 h.
 3. **Alpha blocker:** AAF/OMF import and export (G-03). 50–90 h.
 4. macOS plugin entitlement (#153), then AU editors (G-05). 1 h for the entitlement (needed for the mix row), then 15–25 h.
@@ -122,6 +123,7 @@ mutated and truncated movies. Field reports from the first public week are track
 
 ## Progress log
 
+- **2026-10-16 (hardware I/O routing, low-latency monitoring & latency compensation):** Setup › I/O routes tracks, buses and sends to physical hardware output paths (`OutputPath::first_channel` and `Route::Hardware`) across `horegdaw-mix` and `horegdaw-playback` without unintended stereo fold-down; Options › Low Latency Monitoring bypasses inserts, mutes sends and disables PDC alignment on input-monitored / record-armed audio tracks; Setup › Playback Engine reports output + PDC latency and applies round-trip + manual `record_offset` sample compensation when placing recorded takes on the timeline (G-01). No readiness percentage change.
 - **2026-10-13:** `mix.instrument` takes the built-in instrument's parameters in `params` (validated, clamped) and refuses any other field, so a synth setting written beside `plugin` is an error instead of being accepted and ignored (#265)
 - **2026-10-13:** A bounce of a bus that an aux returns onto lines up with the timeline: the aux insert's lookahead is compensated like the main mix's (it left the bus late and cut the end off), and tracks routed to that bus wait for it too (#246)
 - **2026-10-13:** Delay compensation covers the inserts of the master faders: a bounce of the main mix with a Maximizer on the master lines up with the same mix without it (it came out 71 samples late) (#351)
@@ -155,6 +157,7 @@ mutated and truncated movies. Field reports from the first public week are track
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-16 | minor | Hardware output routing, low-latency monitoring, and record-offset latency compensation (G-01); record-to-disk streaming docs updated (G-06) |
 | 2026-10-13 | trivial | Progress log: mix.instrument params, unknown fields refused (#265) |
 | 2026-10-13 | trivial | Progress log: bus bounce compensates aux returns (#246) |
 | 2026-10-13 | trivial | Progress log: master insert latency compensated (#351) |

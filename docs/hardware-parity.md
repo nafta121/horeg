@@ -1,13 +1,13 @@
 # Hardware parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-13 · **Change:** trivial (bounces of a bus fed by an aux compensate its latency (#246); previously minor: audio device, rate and buffer choice; ASIO feature) · **Target:** Avid Pro Tools Ultimate 2026.4.1
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-16 · **Change:** minor (G-01/G-06: hardware I/O output routing, low-latency monitoring, latency reporting and record-offset compensation, record-to-disk) · **Target:** Avid Pro Tools Ultimate 2026.4.1
 
 A DAW is judged by how it drives audio interfaces, MIDI gear, control surfaces and sync. This is
 HoregDAW's weakest dimension. Ours is measured from `crates/playback` (cpal) and the absence of
 any MIDI-device or control-surface code; Pro Tools' from its documentation and Setup menus.
 
-**Hardware: ~12 % ready** (estimated). **Performance: ~35 %** (estimated; nothing benchmarked
-against Pro Tools). Remaining ≈ 110–180 h for hardware, 40–70 h for performance.
+**Hardware: ~18 % ready** (estimated). **Performance: ~40 %** (estimated; nothing benchmarked
+against Pro Tools). Remaining ≈ 95–155 h for hardware, 30–55 h for performance.
 
 Legend: ✅ works · 🟡 partial · ❌ missing.
 
@@ -20,12 +20,12 @@ Legend: ✅ works · 🟡 partial · ❌ missing.
 | Choose input device | ✅ | 🟡 Setup › Playback Engine (not yet verified on macOS) | ✅ (WASAPI, ASIO) | 🟡 (not yet verified) | ❌ no recording | ❌ |
 | Buffer size (32–2048) | ✅ | 🟡 device buffer when the driver allows it (not yet verified); mix in 512-sample blocks | 🟡 device buffer 16–8192 (verified 128 on ASIO, 256 on WASAPI); mix in 512-sample blocks | 🟡 (not yet verified) | 🟡 | ❌ |
 | Duplex stream on one clock | ✅ | ❌ separate input/output streams | ❌ | ❌ | ❌ | ❌ |
-| Hardware I/O mapping (I/O Setup to physical channels) | ✅ | 🟡 multichannel output in order; no per-channel map | 🟡 | 🟡 | 🟡 | ❌ |
-| Low-latency monitoring | ✅ | ❌ (`options.low_latency_monitoring` is a stored flag) | ❌ | ❌ | ❌ | ❌ |
-| Latency reporting and record offset compensation | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Hardware I/O mapping (I/O Setup to physical channels) | ✅ | ✅ `OutputPath::first_channel` & `Route::Hardware` map output paths and input pairs (`In N`, `In N-M`) to physical channels | ✅ | ✅ | ✅ | ❌ |
+| Low-latency monitoring | ✅ | ✅ `options.low_latency_monitoring` bypasses inserts, mutes sends and skips PDC on monitored tracks | ✅ | ✅ | ✅ | ✅ |
+| Latency reporting and record offset compensation | ✅ | ✅ Output + mix PDC latency reported in Playback Engine; `Recording::offset` + `engine.record_offset` compensate recorded takes | ✅ | ✅ | ✅ | ❌ |
 | Sample rate follows the session; resample when it can't | ✅ (switches device) | 🟡 resamples (input pitch bug fixed, #28) | 🟡 | 🟡 | 🟡 | 🟡 |
 | Avid HDX / HD Native DSP, Hybrid Engine DSP mode | ✅ | ❌ (out of reach: Avid hardware) | ❌ | ❌ | ❌ | ❌ |
-| Disk allocation / record to disk | ✅ | ❌ recording into RAM (PR #84) | ❌ | ❌ | ❌ | ❌ |
+| Disk allocation / record to disk | ✅ | ✅ `TakeWriter` streams recorded takes directly to `.wav` files on disk (`crates/playback/src/record.rs`) | ✅ | ✅ | ❌ | ❌ |
 
 ## MIDI
 
@@ -62,7 +62,7 @@ Legend: ✅ works · 🟡 partial · ❌ missing.
 |---|---|---|---|
 | Parallel mixing across cores | ✅ | ✅ | `horegdaw-mix` renders independent strips in parallel (rayon) |
 | Plugin delay compensation | ✅ | ✅ | Bounces of a bus that an aux returns onto are compensated like the main mix (#246). |
-| Disk streaming of long sources | ✅ | ❌ | Whole files decoded into the `SourcePool` |
+| Disk streaming of long sources | ✅ | ❌ | Whole playback files decoded into the `SourcePool`; recorded takes stream to disk (`TakeWriter`) |
 | Track count (Ultimate: 2,048 voices) | ✅ | unmeasured | No benchmark exists; add `cargo xtask bench` |
 | Real-time audio thread discipline | ✅ | ✅ | No blocking/allocation in steady state, audio-thread-aware logger |
 | Freeze / commit to save CPU | ✅ | 🟡 | `track.commit` renders; `track.freeze` only sets a flag (no CPU saved) |
@@ -72,6 +72,7 @@ Legend: ✅ works · 🟡 partial · ❌ missing.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-16 | minor | Hardware I/O output routing (`OutputPath::first_channel`), low-latency monitoring (`options.low_latency_monitoring`), latency reporting and record-offset compensation (`Recording::offset`, `engine.record_offset`), and record-to-disk status |
 | 2026-10-13 | trivial | bounces of a bus fed by an aux compensate its latency (#246) |
 | 2026-10-12 | minor | Audio device settings: system, output, input, sample rate and buffer size; opt-in ASIO |
 | 2026-10-10 | major | Created: audit of audio interface, MIDI, control-surface, sync and performance support against Pro Tools 2026.4.1 |
