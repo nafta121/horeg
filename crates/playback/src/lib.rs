@@ -32,7 +32,7 @@ use horegdaw_mix::{MAX_CHANNELS, MixEngine, PreparedInstance, StripMeter, itu_st
 use horegdaw_model::{Session, TrackId};
 use horegdaw_time::{Range, Samples};
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, Sender, SyncSender, channel, sync_channel};
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -79,6 +79,8 @@ struct Shared {
     playing: AtomicBool,
     /// Speed × 1000.
     speed: AtomicU32,
+    /// Mix engine PDC latency in session samples.
+    latency: AtomicUsize,
     meters: Mutex<MeterSnapshot>,
 }
 
@@ -183,7 +185,7 @@ fn new_engine(sr: f32) -> MixEngine {
 impl AudioState {
     fn new(rx: Receiver<Cmd>, shared: Arc<Shared>, session: Arc<Session>, device_rate: f64, garbage: Sender<Vec<Box<dyn Plugin>>>) -> Self {
         let sr = session.sample_rate.as_f64() as f32;
-        let nch = main_channels(&session);
+        let nch = session.hardware_channels();
         AudioState {
             garbage,
             old_sessions: None,
@@ -218,8 +220,8 @@ impl AudioState {
                         let _ = self.garbage.send(old.drain_plugins());
                     }
                     self.mix.adopt(instances);
-                    // The main format changed (a document edit, not steady state): resize.
-                    let nch = main_channels(&s);
+                    // The main or hardware output format changed (a document edit, not steady state): resize.
+                    let nch = s.hardware_channels();
                     if self.pending.len() != nch {
                         self.pending = vec![vec![0.0; BLOCK]; nch];
                         self.pending_len = 0;
@@ -259,6 +261,7 @@ impl AudioState {
             // Place adopted instances now (not only once playback starts), so editors see them;
             // `sync` creates no third-party plugins here.
             self.mix.ensure_synced(&self.session);
+            self.shared.latency.store(self.mix.latency, Ordering::Relaxed);
         }
         self.send_garbage();
         self.shared.playing.store(self.playing, Ordering::Relaxed);
@@ -308,6 +311,10 @@ impl AudioState {
         self.mix.monitor_only = !self.playing;
         self.mix.recording = self.recording;
         self.mix.render(&self.session, self.pos, n, &mut self.pending);
+        if self.session.outputs.len() > 1 || self.session.outputs.first().is_some_and(|o| o.first_channel > 0) {
+            self.mix.copy_hardware_outputs(&self.session, n, &mut self.pending);
+        }
+        self.shared.latency.store(self.mix.latency, Ordering::Relaxed);
         self.send_garbage();
         self.pending_len = n;
         if let Ok(mut m) = self.shared.meters.try_lock() {
@@ -344,6 +351,7 @@ impl AudioState {
         let step = self.session.sample_rate.as_f64() / self.device_rate.max(1.0) * speed.clamp(0.1, 4.0);
         let callback_frames = out.len() / channels;
         let quantum = ((callback_frames as f64 * step).ceil() as usize).clamp(1, BLOCK);
+        let main_ch = main_channels(&self.session);
         for frame in out.chunks_mut(channels) {
             while self.read >= self.pending_len as f64 {
                 self.read -= self.pending_len as f64;
@@ -365,11 +373,11 @@ impl AudioState {
                 let b = ch.and_then(|v| v.get(i0 + 1)).copied().unwrap_or(a);
                 a + (b - a) * fr
             };
-            if nch > 2 && channels < nch {
+            if main_ch > 2 && channels < main_ch {
                 // Fewer device channels than the main mix: ITU fold-down to stereo.
                 let (mut l, mut r) = (0.0f32, 0.0f32);
                 if sounding {
-                    for (c, (gl, gr)) in self.fold.iter().enumerate().take(nch) {
+                    for (c, (gl, gr)) in self.fold.iter().enumerate().take(main_ch) {
                         let v = sample(c);
                         l += v * gl;
                         r += v * gr;
@@ -506,10 +514,11 @@ impl Player {
             position: AtomicI64::new(0),
             playing: AtomicBool::new(false),
             speed: AtomicU32::new(1000),
+            latency: AtomicUsize::new(0),
             meters: Mutex::new(MeterSnapshot::default()),
         });
         let want = session.sample_rate.hz();
-        let want_ch = u16::try_from(main_channels(&session)).unwrap_or(2);
+        let want_ch = u16::try_from(session.hardware_channels()).unwrap_or(2);
         let side_rate = session.sample_rate.as_f64() as f32;
         let new_side = |garbage: Receiver<Vec<Box<dyn Plugin>>>| Mutex::new(Side::new(side_rate, garbage));
         match open_device(want, want_ch, cfg) {
@@ -770,6 +779,31 @@ impl Player {
         self.shared.playing.load(Ordering::Relaxed)
     }
 
+    /// Mix engine plugin delay compensation (PDC) latency in session samples.
+    pub fn mix_latency(&self) -> usize {
+        self.shared.latency.load(Ordering::Relaxed)
+    }
+
+    /// Estimated output buffer latency in session samples.
+    pub fn output_latency_samples(&self, session_rate: u32) -> usize {
+        if self.silent {
+            return 0;
+        }
+        let buf = u64::from(self.device_buffer.unwrap_or(BLOCK as u32));
+        let rate = u64::from(self.device_rate.max(1));
+        usize::try_from(buf.saturating_mul(u64::from(session_rate)) / rate).unwrap_or(0)
+    }
+
+    /// Total round-trip record latency compensation in session samples (output buffer + input
+    /// buffer + mix PDC + manual user offset).
+    pub fn record_offset_samples(&self, input_buffer: Option<u32>, input_rate: u32, session_rate: u32, manual_offset: Samples) -> Samples {
+        let out_lat = i64::try_from(self.output_latency_samples(session_rate)).unwrap_or(0);
+        let in_buf = u64::from(input_buffer.unwrap_or(BLOCK as u32));
+        let in_lat = i64::try_from(in_buf.saturating_mul(u64::from(session_rate)) / u64::from(input_rate.max(1))).unwrap_or(0);
+        let pdc = i64::try_from(self.mix_latency()).unwrap_or(0);
+        out_lat.saturating_add(in_lat).saturating_add(pdc).saturating_add(manual_offset)
+    }
+
     pub fn meters(&self) -> MeterSnapshot {
         self.shared.meters.lock().unwrap_or_else(PoisonError::into_inner).clone()
     }
@@ -828,7 +862,7 @@ impl Side {
             self.forget(key);
             let made = horegdaw_mix::create_instance(&spec.id, spec.state.as_deref(), sr, BLOCK, spec.ch);
             log::debug!("plugin instance for {:?} slot {}: {} ({} ch, created: {})", spec.track, spec.slot, spec.id, spec.ch, made.is_some());
-            self.shadow.insert(key, (spec.id.clone(), spec.ch, made.is_some()));
+            self.shadow.insert(key, (spec.id.to_string(), spec.ch, made.is_some()));
             if let Some(horegdaw_mix::NewInstance { mut plugin, refused_state }) = made {
                 if let Some(e) = plugin.editor() {
                     self.editors.insert(key, e);
@@ -839,7 +873,7 @@ impl Side {
                 if refused_state {
                     self.refused.insert(key);
                 }
-                out.push(PreparedInstance { track: spec.track, slot: spec.slot, id: spec.id, ch: spec.ch, plugin });
+                out.push(PreparedInstance { track: spec.track, slot: spec.slot, id: spec.id.to_string(), ch: spec.ch, plugin });
             }
         }
         out
@@ -988,6 +1022,7 @@ mod tests {
             position: AtomicI64::new(0),
             playing: AtomicBool::new(true),
             speed: AtomicU32::new(1000),
+            latency: AtomicUsize::new(0),
             meters: Mutex::new(MeterSnapshot::default()),
         };
         let fault = Fault::default();
@@ -1029,6 +1064,7 @@ mod tests {
             position: AtomicI64::new(0),
             playing: AtomicBool::new(false),
             speed: AtomicU32::new(1000),
+            latency: AtomicUsize::new(0),
             meters: Mutex::new(MeterSnapshot::default()),
         });
         let (tx, rx) = channel();
@@ -1047,6 +1083,7 @@ mod tests {
             position: AtomicI64::new(0),
             playing: AtomicBool::new(false),
             speed: AtomicU32::new(1000),
+            latency: AtomicUsize::new(0),
             meters: Mutex::new(MeterSnapshot::default()),
         });
         let (tx, rx) = channel();
@@ -1072,6 +1109,7 @@ mod tests {
             position: AtomicI64::new(0),
             playing: AtomicBool::new(false),
             speed: AtomicU32::new(1000),
+            latency: AtomicUsize::new(0),
             meters: Mutex::new(MeterSnapshot::default()),
         });
         let (tx, rx) = channel();
@@ -1095,6 +1133,47 @@ mod tests {
     }
 
     #[test]
+    fn hardware_outputs_route_to_device_channels_without_stereo_fold() {
+        use horegdaw_model::{ChannelFormat, Clip, OutputPath, Route, SourceAudio, SourceId, TrackKind};
+        let mut s = horegdaw_model::Session::default();
+        s.edit.click = false;
+        s.outputs.push(OutputPath { name: "Cue 3-4".into(), format: ChannelFormat::Stereo, first_channel: 2 });
+        let t1 = s.add_track(TrackKind::Audio, ChannelFormat::Stereo, Some("MainTrk"));
+        let t2 = s.add_track(TrackKind::Audio, ChannelFormat::Stereo, Some("CueTrk"));
+        s.track_mut(t2).unwrap().mixer.output = Route::Hardware("Cue 3-4".into());
+        s.pool.insert(
+            SourceId(10),
+            Arc::new(SourceAudio::new(horegdaw_audio_io::AudioBuffer { sample_rate: 48_000, channels: vec![vec![0.25; 4096], vec![0.25; 4096]] })),
+        );
+        s.pool.insert(
+            SourceId(11),
+            Arc::new(SourceAudio::new(horegdaw_audio_io::AudioBuffer { sample_rate: 48_000, channels: vec![vec![0.75; 4096], vec![0.75; 4096]] })),
+        );
+        let c1 = s.new_clip_id();
+        let c2 = s.new_clip_id();
+        s.track_mut(t1).unwrap().playlist_mut().unwrap().clips.push(Clip::audio(c1, "a", SourceId(10), 0, 0, 4096));
+        s.track_mut(t2).unwrap().playlist_mut().unwrap().clips.push(Clip::audio(c2, "b", SourceId(11), 0, 0, 4096));
+        let shared = Arc::new(Shared {
+            position: AtomicI64::new(0),
+            playing: AtomicBool::new(false),
+            speed: AtomicU32::new(1000),
+            latency: AtomicUsize::new(0),
+            meters: Mutex::new(MeterSnapshot::default()),
+        });
+        let (tx, rx) = channel();
+        let mut st = AudioState::new(rx, Arc::clone(&shared), Arc::new(s), 48_000.0, channel().0);
+        tx.send(Cmd::Play { from: 0, end: None, looped: None }).unwrap();
+        let mut out4 = vec![0.0f32; 4 * 128];
+        st.fill(&mut out4, 4);
+        assert!((out4[0] - 0.25).abs() < 1e-4 && (out4[1] - 0.25).abs() < 1e-4);
+        assert!((out4[2] - 0.75).abs() < 1e-4 && (out4[3] - 0.75).abs() < 1e-4);
+        // On a 2-channel device, channels 0-1 stay at 0.25 without folding Cue 3-4 into them.
+        let mut out2 = vec![0.0f32; 2 * 128];
+        st.fill(&mut out2, 2);
+        assert!((out2[0] - 0.25).abs() < 1e-4 && (out2[1] - 0.25).abs() < 1e-4);
+    }
+
+    #[test]
     fn instances_arrive_with_the_session_and_leave_through_the_return_channel() {
         use horegdaw_model::{ChannelFormat, Insert, TrackKind};
         let mut s = horegdaw_model::Session::default();
@@ -1105,6 +1184,7 @@ mod tests {
             position: AtomicI64::new(0),
             playing: AtomicBool::new(false),
             speed: AtomicU32::new(1000),
+            latency: AtomicUsize::new(0),
             meters: Mutex::new(MeterSnapshot::default()),
         });
         let (tx, rx) = channel();
@@ -1197,6 +1277,7 @@ mod tests {
             position: AtomicI64::new(0),
             playing: AtomicBool::new(false),
             speed: AtomicU32::new(1000),
+            latency: AtomicUsize::new(0),
             meters: Mutex::new(MeterSnapshot::default()),
         });
         let (tx, rx) = channel();
@@ -1226,6 +1307,7 @@ mod tests {
             position: AtomicI64::new(0),
             playing: AtomicBool::new(false),
             speed: AtomicU32::new(1000),
+            latency: AtomicUsize::new(0),
             meters: Mutex::new(MeterSnapshot::default()),
         });
         let (tx, rx) = channel();
@@ -1261,6 +1343,7 @@ mod tests {
                 position: AtomicI64::new(0),
                 playing: AtomicBool::new(false),
                 speed: AtomicU32::new(1000),
+                latency: AtomicUsize::new(0),
                 meters: Mutex::new(MeterSnapshot::default()),
             });
             let (tx, rx) = channel();
@@ -1291,6 +1374,7 @@ mod tests {
             position: AtomicI64::new(0),
             playing: AtomicBool::new(false),
             speed: AtomicU32::new(1000),
+            latency: AtomicUsize::new(0),
             meters: Mutex::new(MeterSnapshot::default()),
         });
         let (tx, rx) = channel();

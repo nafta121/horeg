@@ -3,10 +3,10 @@
 use crate::SoundApp;
 use crate::theme::{Tokens, mono, rgb};
 use egui::{Color32, Sense, vec2};
-use serde_json::json;
 use horegdaw_model::{AutomationMode, ClipContent};
 use horegdaw_playback::AudioConfig;
 use horegdaw_playback::devices::{AudioSystem, DeviceInfo};
+use serde_json::json;
 use std::sync::Arc;
 
 pub fn show(app: &mut SoundApp, ctx: &egui::Context) {
@@ -518,6 +518,7 @@ pub fn playback_engine(app: &mut SoundApp, ctx: &egui::Context) {
         });
         ui.separator();
         egui::Grid::new("pe-state").num_columns(2).show(ui, |ui| {
+            let sr = app.engine.session().sample_rate.hz();
             ui.label("Output");
             ui.label(app.player.as_ref().map_or("none".to_string(), |p| {
                 if p.silent {
@@ -530,11 +531,11 @@ pub fn playback_engine(app: &mut SoundApp, ctx: &egui::Context) {
             ui.end_row();
             ui.label("Input");
             ui.label(app.recorder.as_ref().map_or("opened on first record or monitor".to_string(), |r| {
-                format!("{} · {} Hz · {} ch", r.device_name, r.sample_rate, r.channels)
+                let buf = r.buffer_size.map_or("default buffer".to_string(), |b| format!("{b} samples"));
+                format!("{} · {} Hz · {} ch · {buf}", r.device_name, r.sample_rate, r.channels)
             }));
             ui.end_row();
             ui.label("Session rate");
-            let sr = app.engine.session().sample_rate.hz();
             let note = app
                 .player
                 .as_ref()
@@ -542,12 +543,29 @@ pub fn playback_engine(app: &mut SoundApp, ctx: &egui::Context) {
                 .map_or(String::new(), |_| " (resampled to the device rate)".to_string());
             ui.label(format!("{sr} Hz{note}"));
             ui.end_row();
+            ui.label("Latency");
+            let out_lat = app.player.as_ref().map_or(0, |p| p.output_latency_samples(sr));
+            let pdc_lat = app.player.as_ref().map_or(0, |p| p.mix_latency());
+            let total_ms = (out_lat + pdc_lat) as f64 * 1000.0 / f64::from(sr.max(1));
+            ui.label(format!("{out_lat} out + {pdc_lat} PDC samples ({total_ms:.1} ms)"));
+            ui.end_row();
         });
         ui.label(egui::RichText::new("The mix runs in 512-sample blocks; the buffer size sets the device's own latency.").small().color(t.text_dim));
         let mut dc = app.engine.session().edit.delay_compensation;
         if crate::widgets::checkbox(ui, &mut dc, "Delay compensation").changed() {
             let _ = app.run("options.delay_compensation", json!({"value": dc}));
         }
+        let mut llm = app.engine.session().edit.flag("options.low_latency_monitoring");
+        if crate::widgets::checkbox(ui, &mut llm, "Low latency monitoring (bypass inserts & sends on monitored tracks)").changed() {
+            let _ = app.run("options.low_latency_monitoring", json!({"value": llm}));
+        }
+        ui.horizontal(|ui| {
+            ui.label("Record offset");
+            let mut rec_off = app.engine.session().edit.value("engine.record_offset", 0.0).round() as i64;
+            if ui.add(egui::DragValue::new(&mut rec_off).range(-96_000..=96_000).suffix(" samples")).changed() {
+                let _ = app.run("setup.playback_engine", json!({"record_offset": rec_off}));
+            }
+        });
         if ui.button("Reconnect audio device").clicked() {
             app.reconnect_audio();
         }
@@ -608,7 +626,7 @@ pub fn audio_device_command(app: &mut SoundApp, p: &serde_json::Value) -> Result
 /// Setup › I/O: busses and output paths.
 pub fn io_setup(app: &mut SoundApp, ctx: &egui::Context) {
     let mut open = app.ui.show_io_setup;
-    win(ctx, &mut open, "I/O Setup", vec2(420.0, 300.0), |ui| {
+    win(ctx, &mut open, "I/O Setup", vec2(460.0, 360.0), |ui| {
         ui.label(egui::RichText::new("Busses").strong());
         let busses: Vec<(String, String)> = app.engine.session().busses.iter().map(|b| (b.name.clone(), b.format.label().to_string())).collect();
         egui::Grid::new("busses").num_columns(3).striped(true).show(ui, |ui| {
@@ -646,8 +664,35 @@ pub fn io_setup(app: &mut SoundApp, ctx: &egui::Context) {
             });
             ui.label(egui::RichText::new(format!("{} ch", main.channels())).small());
         });
-        for o in app.engine.session().outputs.clone() {
-            ui.label(format!("{} — {} from channel {}", o.name, o.format.label(), o.first_channel + 1));
+        let outputs = app.engine.session().outputs.clone();
+        egui::Grid::new("outputs").num_columns(4).striped(true).show(ui, |ui| {
+            for (idx, o) in outputs.iter().enumerate() {
+                let key = egui::Id::new(("out_name", o.name.clone()));
+                let mut edit: String = ui.ctx().memory(|m| m.data.get_temp(key)).unwrap_or_else(|| o.name.clone());
+                let r = ui.text_edit_singleline(&mut edit);
+                ui.ctx().memory_mut(|m| m.data.insert_temp(key, edit.clone()));
+                if r.lost_focus() && edit != o.name {
+                    let _ = app.run("setup.io", json!({"action": "rename_output", "name": o.name, "new_name": edit}));
+                }
+                ui.label(o.format.label());
+                let mut ch1 = i64::from(o.first_channel) + 1;
+                if ui.add(egui::DragValue::new(&mut ch1).range(1..=64).prefix("Ch ")).changed() {
+                    let _ = app.run("setup.io", json!({"action": "set_output", "name": o.name, "first_channel": ch1 - 1}));
+                }
+                if idx > 0 {
+                    if ui.small_button("Delete").clicked() {
+                        let _ = app.run("setup.io", json!({"action": "delete_output", "name": o.name}));
+                    }
+                } else {
+                    ui.label(egui::RichText::new("Main").small());
+                }
+                ui.end_row();
+            }
+        });
+        if ui.button("New Output").clicked() {
+            let next_ch = app.engine.session().hardware_channels();
+            let name = format!("Out {}-{}", next_ch + 1, next_ch + 2);
+            let _ = app.run("setup.io", json!({"action": "create_output", "name": name, "first_channel": next_ch, "format": "stereo"}));
         }
     });
     app.ui.show_io_setup = open;

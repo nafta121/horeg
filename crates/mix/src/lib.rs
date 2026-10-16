@@ -72,15 +72,24 @@ pub fn main_channels(s: &Session) -> usize {
     s.main_format().channels().clamp(MAIN_CHANNELS, MAX_CHANNELS)
 }
 
+/// The secondary hardware output buffer named `name` (case-insensitive). Keys are stored
+/// lowercased by `sync`; this compares in place so the render path never allocates.
+fn hw_output<'a>(map: &'a HashMap<String, BusBuf>, name: &str) -> Option<&'a BusBuf> {
+    map.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v)
+}
+
+/// Mutable form of [`hw_output`].
+fn hw_output_mut<'a>(map: &'a mut HashMap<String, BusBuf>, name: &str) -> Option<&'a mut BusBuf> {
+    map.iter_mut().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v)
+}
+
 /// Slot index used for a track's instrument plugin in [`InstanceSpec`] and [`PreparedInstance`]
 /// (insert slots use their index).
 pub const INSTRUMENT_SLOT: usize = usize::MAX;
 
 /// Hosted third-party plugin ids (CLAP or VST3): created off the audio thread in realtime use.
 pub fn is_third_party(id: &str) -> bool {
-    id.starts_with(horegdaw_clap_host::ID_PREFIX)
-        || id.starts_with(horegdaw_vst3_host::ID_PREFIX)
-        || id.starts_with(horegdaw_au_host::ID_PREFIX)
+    id.starts_with(horegdaw_clap_host::ID_PREFIX) || id.starts_with(horegdaw_vst3_host::ID_PREFIX) || id.starts_with(horegdaw_au_host::ID_PREFIX)
 }
 
 /// A third-party plugin instance a session needs: which slot, which plugin, how many channels,
@@ -235,6 +244,8 @@ struct Strip {
     clipbuf: Vec<Vec<f32>>,
     /// Total latency of the active inserts (samples).
     latency: usize,
+    /// True when Low Latency Monitoring bypassed this strip's inserts and sends for the block.
+    low_latency: bool,
     /// Delay compensation: align this strip with the slowest one (post- and pre-fader paths),
     /// plus extra delay for direct-to-main outputs so they line up with aux returns.
     align: DelayLine,
@@ -316,6 +327,7 @@ impl Strip {
             clip_fx: HashMap::new(),
             clipbuf: Vec::new(),
             latency: 0,
+            low_latency: false,
             align: DelayLine::default(),
             align_pre: DelayLine::default(),
             out_extra: DelayLine::default(),
@@ -331,6 +343,8 @@ pub struct MixEngine {
     max_block: usize,
     strips: HashMap<TrackId, Strip>,
     busses: HashMap<BusId, BusBuf>,
+    /// Secondary hardware output paths (`s.outputs[1..]`), keyed by lowercase path name.
+    hw_outputs: HashMap<String, BusBuf>,
     main: Vec<Vec<f32>>,
     main_fmt: ChannelFormat,
     pub meters: HashMap<TrackId, StripMeter>,
@@ -423,6 +437,7 @@ impl MixEngine {
             max_block,
             strips: HashMap::new(),
             busses: HashMap::new(),
+            hw_outputs: HashMap::new(),
             main: vec![vec![0.0; max_block]; MAIN_CHANNELS],
             main_fmt: ChannelFormat::Stereo,
             meters: HashMap::new(),
@@ -595,6 +610,16 @@ impl MixEngine {
             }
         }
         self.busses.retain(|id, _| s.bus(*id).is_some());
+        for o in s.outputs.iter().skip(1) {
+            let key = o.name.to_ascii_lowercase();
+            let n = o.format.channels().clamp(1, MAX_CHANNELS);
+            let hw = self.hw_outputs.entry(key).or_insert_with(|| BusBuf { fmt: o.format, buf: Vec::new() });
+            hw.fmt = o.format;
+            if hw.buf.len() != n {
+                hw.buf = vec![vec![0.0; mb]; n];
+            }
+        }
+        self.hw_outputs.retain(|k, _| s.outputs.iter().skip(1).any(|o| o.name.eq_ignore_ascii_case(k)));
     }
 
     /// Re-syncs plugin instances and the routing order when the session's structure changed
@@ -626,6 +651,11 @@ impl MixEngine {
         self.ensure_synced(s);
         for b in self.busses.values_mut() {
             for c in b.buf.iter_mut() {
+                c.iter_mut().take(frames).for_each(|x| *x = 0.0);
+            }
+        }
+        for hw in self.hw_outputs.values_mut() {
+            for c in hw.buf.iter_mut() {
                 c.iter_mut().take(frames).for_each(|x| *x = 0.0);
             }
         }
@@ -701,22 +731,30 @@ impl MixEngine {
         for (i, st) in work.iter_mut() {
             let Some(t) = s.tracks.get(*i) else { continue };
             let ch = st.buf.len();
+            if st.low_latency {
+                st.align.set(0, ch);
+                st.align_pre.set(0, ch);
+                st.out_extra.set(0, ch);
+                continue;
+            }
             st.align.set(lmax_t.saturating_sub(st.latency), ch);
             st.align.process(&mut st.buf, frames);
             if t.mixer.sends.iter().flatten().any(|x| x.pre_fader) {
                 st.align_pre.set(lmax_t.saturating_sub(st.latency), ch);
                 st.align_pre.process(&mut st.pre, frames);
             }
-            let waits = match &t.mixer.output {
-                Route::Main => true,
-                Route::Bus(b) => self.aux_fed.contains(b),
-                _ => false,
+            let extra = match &t.mixer.output {
+                Route::Main => lmax_a,
+                Route::Hardware(h) if s.is_main_output(h) => lmax_a,
+                Route::Hardware(_) => lmax_a.saturating_add(lmax_m),
+                Route::Bus(b) if self.aux_fed.contains(b) => lmax_a,
+                _ => 0,
             };
-            st.out_extra.set(if waits { lmax_a } else { 0 }, ch);
+            st.out_extra.set(extra, ch);
         }
         for (i, st) in work.iter_mut() {
             if let Some(t) = s.tracks.get(*i) {
-                self.route_strip(t, st, pos, frames);
+                self.route_strip(s, t, st, pos, frames);
             }
         }
         for (i, st) in work.drain(..) {
@@ -737,8 +775,12 @@ impl MixEngine {
             let ch = st.buf.len();
             st.align.set(if pdc { lmax_a.saturating_sub(st.latency) } else { 0 }, ch);
             st.align.process(&mut st.buf, frames);
-            st.out_extra.set(0, ch);
-            self.route_strip(t, &mut st, pos, frames);
+            let aux_extra = match &t.mixer.output {
+                Route::Hardware(h) if pdc && !s.is_main_output(h) => lmax_m,
+                _ => 0,
+            };
+            st.out_extra.set(aux_extra, ch);
+            self.route_strip(s, t, &mut st, pos, frames);
             self.strips.insert(t.id, st);
         }
         self.order = order;
@@ -802,6 +844,41 @@ impl MixEngine {
         self.main_meter.measure(&self.main, frames, 0.0);
     }
 
+    /// Map the rendered main mix and secondary hardware output paths (`s.outputs`) onto physical
+    /// device channels according to each `OutputPath::first_channel`.
+    pub fn copy_hardware_outputs(&self, s: &Session, frames: usize, phys: &mut [Vec<f32>]) {
+        for o in phys.iter_mut() {
+            for x in o.iter_mut().take(frames) {
+                *x = 0.0;
+            }
+        }
+        let main_first = s.outputs.first().map_or(0, |o| usize::from(o.first_channel));
+        for (c, src) in self.main.iter().enumerate() {
+            let Some(dst) = phys.get_mut(main_first.saturating_add(c)) else { continue };
+            for i in 0..frames {
+                let v = src.get(i).copied().unwrap_or(0.0);
+                if let Some(d) = dst.get_mut(i) {
+                    *d = if v.is_finite() { v } else { 0.0 };
+                }
+            }
+        }
+        for o in s.outputs.iter().skip(1) {
+            let Some(hw) = hw_output(&self.hw_outputs, &o.name) else { continue };
+            let first = usize::from(o.first_channel);
+            for (c, src) in hw.buf.iter().enumerate() {
+                let Some(dst) = phys.get_mut(first.saturating_add(c)) else { continue };
+                for i in 0..frames {
+                    let v = src.get(i).copied().unwrap_or(0.0);
+                    if v.is_finite()
+                        && let Some(d) = dst.get_mut(i)
+                    {
+                        *d += v;
+                    }
+                }
+            }
+        }
+    }
+
     /// The delay-compensation latency written onto `bus`: the slowest track insert, plus the
     /// slowest aux return when an aux returns onto this bus.
     fn bus_latency(&self, bus: BusId) -> usize {
@@ -826,34 +903,47 @@ impl MixEngine {
         }
     }
 
-    /// Send, meter and pan a processed strip into the busses / main mix.
-    fn route_strip(&mut self, t: &Track, strip: &mut Strip, pos: Samples, frames: usize) {
+    /// Send, meter and pan a processed strip into the busses / main mix / hardware outputs.
+    fn route_strip(&mut self, s: &Session, t: &Track, strip: &mut Strip, pos: Samples, frames: usize) {
         let m = self.meters.entry(t.id).or_default();
         m.measure(&strip.buf, frames, strip.gr);
         m.plugin_failures = strip.failures;
         let src_fmt = strip_format(t, strip.buf.len());
         let law = self.pan_law;
-        for (i, snd) in t.mixer.sends.iter().enumerate() {
-            let Some(snd) = snd else { continue };
-            if snd.mute || strip.muted {
-                continue;
+        if !strip.low_latency {
+            for (i, snd) in t.mixer.sends.iter().enumerate() {
+                let Some(snd) = snd else { continue };
+                if snd.mute || strip.muted {
+                    continue;
+                }
+                let lvl = send_level(t, i, snd.level_db, pos);
+                let gain = db_to_gain(lvl);
+                if gain <= 0.0 {
+                    continue;
+                }
+                let src = if snd.pre_fader { &strip.pre } else { &strip.buf };
+                let (dst_buf, dst_fmt) = match &snd.target {
+                    Route::Bus(b) => match self.busses.get_mut(b) {
+                        Some(d) => (&mut d.buf, d.fmt),
+                        None => continue,
+                    },
+                    Route::Main => (&mut self.main, self.main_fmt),
+                    Route::Hardware(h) if s.is_main_output(h) => (&mut self.main, self.main_fmt),
+                    Route::Hardware(h) => match hw_output_mut(&mut self.hw_outputs, h) {
+                        Some(d) => (&mut d.buf, d.fmt),
+                        None => continue,
+                    },
+                    Route::None => continue,
+                };
+                // Mono sends use the send's own pan; stereo sends go straight to L/R.
+                let stereo = if src.len() == 1 { [snd.pan, 0.0] } else { [-1.0, 1.0] };
+                let surround = snd.surround.as_ref().or(if snd.follow_main_pan { t.mixer.surround.as_ref() } else { None });
+                let m = build_matrix(src_fmt, src.len(), dst_fmt, dst_buf.len(), &PanSpec { stereo, surround }, law);
+                apply_matrix(src, frames, dst_buf, &m, gain);
             }
-            let lvl = send_level(t, i, snd.level_db, pos);
-            let gain = db_to_gain(lvl);
-            let src = if snd.pre_fader { &strip.pre } else { &strip.buf };
-            let Route::Bus(b) = &snd.target else { continue };
-            let Some(dst) = self.busses.get_mut(b) else { continue };
-            if gain <= 0.0 {
-                continue;
-            }
-            // Mono sends use the send's own pan; stereo sends go straight to L/R.
-            let stereo = if src.len() == 1 { [snd.pan, 0.0] } else { [-1.0, 1.0] };
-            let surround = snd.surround.as_ref().or(if snd.follow_main_pan { t.mixer.surround.as_ref() } else { None });
-            let m = build_matrix(src_fmt, src.len(), dst.fmt, dst.buf.len(), &PanSpec { stereo, surround }, law);
-            apply_matrix(src, frames, &mut dst.buf, &m, gain);
         }
         let src: &[Vec<f32>] = match &t.mixer.output {
-            Route::Main | Route::Bus(_) if strip.out_extra.len > 0 => {
+            Route::Main | Route::Bus(_) | Route::Hardware(_) if strip.out_extra.len > 0 => {
                 if strip.outbuf.len() != strip.buf.len() {
                     strip.outbuf = vec![Vec::new(); strip.buf.len()];
                 }
@@ -868,11 +958,16 @@ impl MixEngine {
         };
         let (dst, dst_fmt) = match &t.mixer.output {
             Route::Main => (&mut self.main, self.main_fmt),
+            Route::Hardware(h) if s.is_main_output(h) => (&mut self.main, self.main_fmt),
+            Route::Hardware(h) => match hw_output_mut(&mut self.hw_outputs, h) {
+                Some(d) => (&mut d.buf, d.fmt),
+                None => return,
+            },
             Route::Bus(b) => match self.busses.get_mut(b) {
                 Some(d) => (&mut d.buf, d.fmt),
                 None => return,
             },
-            _ => return,
+            Route::None => return,
         };
         let mut start = 0;
         while start < frames {
@@ -908,8 +1003,10 @@ fn process_strip(
         c.iter_mut().take(frames).for_each(|x| *x = 0.0);
     }
     let transport = transport_at(s, pos, !live.monitor_only, live.recording);
+    let mut input_monitored = false;
     match t.kind {
         TrackKind::Audio if !live.input.is_empty() && (t.mixer.input_monitor || (t.mixer.record_arm && (live.monitor_only || live.recording))) => {
+            input_monitored = true;
             // Input monitoring: the track hears its hardware input instead of its clips.
             let first = match &t.mixer.input {
                 Route::Hardware(h) => {
@@ -1019,23 +1116,26 @@ fn process_strip(
             c.iter_mut().take(frames).for_each(|x| *x *= trim);
         }
     }
+    strip.low_latency = input_monitored && s.edit.flag("options.low_latency_monitoring");
     let mut gr = 0.0f32;
     let mut latency = 0usize;
-    for (i, ins) in t.mixer.inserts.iter().enumerate() {
-        let (Some(ins), Some(Some(slot))) = (ins, strip.plugins.get_mut(i)) else { continue };
-        if !ins.active || ins.bypass || slot.failed {
-            continue;
-        }
-        apply_params(slot, ins, t, i, pos);
-        slot.plugin.set_transport(&transport);
-        slot.plugin.process(&mut strip.buf, frames);
-        if contain_failure(slot, &mut strip.buf, frames) {
-            strip.failures.record(i);
-            continue;
-        }
-        latency = latency.saturating_add(slot.plugin.latency());
-        if gr == 0.0 {
-            gr = slot.plugin.gain_reduction_db();
+    if !strip.low_latency {
+        for (i, ins) in t.mixer.inserts.iter().enumerate() {
+            let (Some(ins), Some(Some(slot))) = (ins, strip.plugins.get_mut(i)) else { continue };
+            if !ins.active || ins.bypass || slot.failed {
+                continue;
+            }
+            apply_params(slot, ins, t, i, pos);
+            slot.plugin.set_transport(&transport);
+            slot.plugin.process(&mut strip.buf, frames);
+            if contain_failure(slot, &mut strip.buf, frames) {
+                strip.failures.record(i);
+                continue;
+            }
+            latency = latency.saturating_add(slot.plugin.latency());
+            if gr == 0.0 {
+                gr = slot.plugin.gain_reduction_db();
+            }
         }
     }
     strip.gr = gr;
@@ -1043,7 +1143,7 @@ fn process_strip(
     let auto_mute = t.mixer.automation_mode.reads() && t.lane(&AutoParam::Mute).is_some_and(|l| l.value_at(pos, 0.0) >= 0.5);
     let soloed_out = any_solo && !t.mixer.solo && !t.mixer.solo_safe && !receives_solo(s, t);
     strip.muted = t.mixer.mute || auto_mute || soloed_out;
-    if t.mixer.sends.iter().flatten().any(|x| x.pre_fader) {
+    if !strip.low_latency && t.mixer.sends.iter().flatten().any(|x| x.pre_fader) {
         strip.pre.resize_with(strip.buf.len(), Vec::new);
         for (d, src) in strip.pre.iter_mut().zip(strip.buf.iter()) {
             d.clear();
@@ -1235,6 +1335,11 @@ fn structure_fingerprint(s: &Session) -> usize {
     for b in &s.busses {
         b.id.hash(&mut h);
         b.format.hash(&mut h);
+    }
+    for o in &s.outputs {
+        o.name.hash(&mut h);
+        o.first_channel.hash(&mut h);
+        o.format.hash(&mut h);
     }
     s.main_format().hash(&mut h);
     h.finish() as usize
@@ -3245,5 +3350,63 @@ mod tests {
         }
         let e_ls = out[4][100].powi(2) + out[6][100].powi(2);
         assert!((e_ls - x(4).powi(2)).abs() < 1e-5, "Ls energy is preserved");
+    }
+
+    #[test]
+    fn hardware_output_paths_map_to_physical_channels() {
+        use horegdaw_model::OutputPath;
+        let (mut s, t1) = session_with_dc(0.4, 1024);
+        s.outputs.push(OutputPath { name: "Out 3-4".into(), first_channel: 2, format: ChannelFormat::Stereo });
+        let t2 = s.add_track(TrackKind::Audio, ChannelFormat::Stereo, Some("Cue"));
+        let id = s.new_clip_id();
+        s.track_mut(t2).unwrap().playlist_mut().unwrap().clips.push(Clip::audio(id, "dc", SourceId(1), 0, 0, 1024));
+        s.track_mut(t2).unwrap().mixer.output = Route::Hardware("Out 3-4".into());
+        s.track_mut(t1).unwrap().mixer.output = Route::Hardware("Out 1-2".into());
+        assert_eq!(s.hardware_channels(), 4);
+
+        let mut eng = MixEngine::new(48_000.0, 512);
+        let mut main_out = vec![vec![0.0; 256]; 2];
+        let mut phys = vec![vec![0.0; 256]; 4];
+        eng.render(&s, 0, 256, &mut main_out);
+        eng.copy_hardware_outputs(&s, 256, &mut phys);
+        let g1 = 0.4 * std::f32::consts::FRAC_1_SQRT_2;
+        assert!((phys[0][10] - g1).abs() < 1e-5 && (phys[1][10] - g1).abs() < 1e-5);
+        assert!((phys[2][10] - 0.4).abs() < 1e-5 && (phys[3][10] - 0.4).abs() < 1e-5);
+    }
+
+    #[test]
+    fn low_latency_monitoring_bypasses_inserts_sends_and_pdc() {
+        use horegdaw_model::{Insert, SendSlot};
+        let (mut s, playback_track) = session_with_dc(0.2, 2048);
+        let mut comp = Insert::new("compressor");
+        comp.params.insert("lookahead".into(), 5.0);
+        comp.params.insert("ratio".into(), 1.0);
+        s.track_mut(playback_track).unwrap().mixer.inserts[0] = Some(comp.clone());
+
+        let bus = s.add_bus("Verb", ChannelFormat::Stereo);
+        let aux = s.add_track(TrackKind::Aux, ChannelFormat::Stereo, Some("Verb"));
+        s.track_mut(aux).unwrap().mixer.input = Route::Bus(bus);
+
+        let rec = s.add_track(TrackKind::Audio, ChannelFormat::Mono, Some("Vox"));
+        s.track_mut(rec).unwrap().mixer.record_arm = true;
+        s.track_mut(rec).unwrap().mixer.pan = vec![-1.0];
+        let mut gain_ins = Insert::new("gain");
+        gain_ins.params.insert("gain".into(), -24.0);
+        s.track_mut(rec).unwrap().mixer.inserts[0] = Some(gain_ins);
+        s.track_mut(rec).unwrap().mixer.inserts[1] = Some(comp);
+        let mut snd = SendSlot::new(Route::Bus(bus));
+        snd.level_db = 0.0;
+        s.track_mut(rec).unwrap().mixer.sends[0] = Some(snd);
+        s.edit.set_flag("options.low_latency_monitoring", true);
+
+        let mut eng = MixEngine::new(48_000.0, 512);
+        eng.recording = true;
+        eng.input = vec![vec![0.5; 256]];
+        let mut out = vec![vec![0.0; 256]; 2];
+        eng.render(&s, 0, 256, &mut out);
+        // Playback track has 240-sample lookahead, so at sample 0 only the low-latency monitored
+        // input is heard on the left channel, unattenuated by the -24 dB insert and with zero delay.
+        assert!((out[0][0] - 0.5).abs() < 1e-5, "got {}", out[0][0]);
+        assert!(eng.meters.get(&aux).is_none_or(|m| m.peak[0] < 1e-6), "send muted under LLM");
     }
 }

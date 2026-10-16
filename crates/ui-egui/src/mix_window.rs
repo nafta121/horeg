@@ -7,9 +7,9 @@ use crate::widgets::{
     rec_toggle, selector_box, selector_box_with_tooltip, shade, surround_panner, text_toggle, vgradient,
 };
 use egui::{Align2, Color32, CornerRadius, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
-use serde_json::json;
 use horegdaw_model::{ChannelFormat, Route, SurroundPan, Track, TrackId, TrackKind};
 use horegdaw_playback::MeterSnapshot;
+use serde_json::json;
 
 pub fn strip_width(narrow: bool) -> f32 {
     if narrow { 64.0 } else { 98.0 }
@@ -1247,12 +1247,34 @@ fn route_menu(app: &mut SoundApp, ui: &mut Ui, id: TrackId, input: bool) {
         let _ = app.run(cmd, json!({"track": id.0, key: "none"}));
         ui.close();
     }
-    let main_name = app.engine.session().outputs.first().map_or_else(|| "Out 1-2".to_string(), |o| o.name.clone());
-    if !input && ui.button(main_name).clicked() {
-        let _ = app.run(cmd, json!({"track": id.0, key: "main"}));
-        ui.close();
+    if !input {
+        let outputs: Vec<String> = app.engine.session().outputs.iter().map(|o| o.name.clone()).collect();
+        if outputs.is_empty() {
+            if ui.button("Out 1-2").clicked() {
+                let _ = app.run(cmd, json!({"track": id.0, key: "main"}));
+                ui.close();
+            }
+        } else {
+            for (idx, out_name) in outputs.iter().enumerate() {
+                if ui.button(out_name).clicked() {
+                    let target = if idx == 0 { "main" } else { out_name.as_str() };
+                    let _ = app.run(cmd, json!({"track": id.0, key: target}));
+                    ui.close();
+                }
+            }
+        }
     }
     if input {
+        let is_stereo = app.engine.session().track(id).is_some_and(|t| t.channels() >= 2);
+        if is_stereo {
+            for pair in ["In 1-2", "In 3-4", "In 5-6", "In 7-8"] {
+                if ui.button(pair).clicked() {
+                    let _ = app.run(cmd, json!({"track": id.0, key: pair}));
+                    ui.close();
+                }
+            }
+            ui.separator();
+        }
         for i in 1..=8 {
             if ui.button(format!("In {i}")).clicked() {
                 let _ = app.run(cmd, json!({"track": id.0, key: format!("In {i}")}));

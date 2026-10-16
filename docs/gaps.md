@@ -1,6 +1,6 @@
 # Where HOREGDAW falls short of Pro Tools
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-12 · **Change:** minor (G-01: audio device settings and opt-in ASIO) · **Target:** Avid Pro Tools Ultimate 2026.4.1
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-16 · **Change:** minor (G-01/G-06 shrunk: hardware I/O routing, low-latency monitoring, latency reporting & record-offset compensation, record-to-disk) · **Target:** Avid Pro Tools Ultimate 2026.4.1
 
 Every known shortfall, one entry each, ranked by how much it stops a Pro Tools user from doing
 real work in HOREGDAW. This is the work list: pick from the top. Rows marked **alpha blocker**
@@ -15,12 +15,12 @@ When you close a gap, delete its entry (or shrink it) in the same PR, and bump t
 
 | # | Gap | Dimension | Doc | Est. (h) |
 |---|---|---|---|---:|
-| G-01 | **Alpha blocker.** No channel routing or duplex low-latency path (device, rate and buffer choice done; ASIO opt-in) | Hardware | [hardware-parity.md](hardware-parity.md) | 15–25 |
+| G-01 | No single duplex clock or JACK backend (device/rate/buffer choice, ASIO opt-in, physical channel routing, low-latency monitoring, and record-offset compensation done) | Hardware | [hardware-parity.md](hardware-parity.md) | 8–15 |
 | G-02 | **Alpha blocker.** No MIDI device input or output | Hardware / MIDI | [hardware-parity.md](hardware-parity.md) | 20–35 |
 | G-03 | **Alpha blocker.** Cannot exchange sessions with Pro Tools (no AAF/OMF, no `.ptx`) | File formats | [file-format-parity.md](file-format-parity.md) | 50–90 |
 | G-04 | Open correctness bugs in features counted as done (~25 issues) | Stability | this file | 25–40 |
 | G-05 | (Entitlement part: alpha blocker for the mix row) Third-party VST3s blocked in the signed macOS build; AU editors missing | Ecosystem | [plugin-parity.md](plugin-parity.md) | 15–25 |
-| G-06 | (Record-to-disk part: alpha blocker for the tracking row) Sources decoded whole into RAM; recording into RAM | Performance | [hardware-parity.md](hardware-parity.md) | 15–25 |
+| G-06 | Playback sources decoded whole into RAM (record-to-disk streaming done) | Performance | [hardware-parity.md](hardware-parity.md) | 10–15 |
 | G-07 | Nothing is compared against Pro Tools' output (no fidelity harness) | Features | this file | 20–30 |
 | G-08 | Built-in plugin catalogue thin and unverified | Features | [plugin-parity.md](plugin-parity.md) | 80–120 |
 | G-09 | English only, no string catalog, no CJK/RTL rendering | Localization | [localization-parity.md](localization-parity.md) | 70–110 |
@@ -42,21 +42,20 @@ When you close a gap, delete its entry (or shrink it) in the same PR, and bump t
 
 ### G-01. Audio interface support
 
-- **Done (2026-10-12):** Setup › Playback Engine chooses the audio system, output and input
+- **Done (2026-10-12..16):** Setup › Playback Engine chooses the audio system, output and input
   device, sample rate and device buffer size (kept with the preferences, per machine; `ui.audio_device`
   for agents); f32 and 16/32-bit integer devices; ASIO behind the opt-in `asio` build feature
-  (verified on Windows with an SSL 2+ at 128 samples).
-- **Missing:** routing to physical channels (I/O Setup), one duplex stream on one clock (input and
-  output are still separate cpal streams), latency reporting and record-offset compensation, ASIO
-  in official builds (owner decision: Steinberg's SDK is proprietary or GPLv3), JACK, and
-  verification on macOS and Linux. The mix still runs in fixed 512-sample blocks.
-  `setup.playback_engine` still stores `device`/`buffer_size` in the session, unused.
-- **Evidence:** code above; Playback Engine window says "Mix block size: 512 samples"; issue #42
-  (no input device selection, forced monitoring feedback with virtual routing).
-- **Impact:** blocks tracking with any multichannel interface; latency makes overdubs hard.
-- **Estimate:** ≈ 25–40 h (device enumeration and selection, buffer size, duplex stream with one
-  clock, ASIO feature build, per-channel I/O mapping into I/O Setup, latency reporting and
-  record-offset compensation). Needs hands-on hardware testing.
+  (verified on Windows with an SSL 2+ at 128 samples). Hardware output paths (`OutputPath::first_channel`
+  and `Route::Hardware`) map to physical device channels; Low-Latency Monitoring
+  (`options.low_latency_monitoring`) bypasses inserts, mutes sends and skips PDC alignment on
+  monitored tracks; output + mix PDC latency is reported in Playback Engine and compensated on
+  recorded takes (`Recording::offset` and `engine.record_offset`).
+- **Missing:** one duplex stream on one clock (input and output are still separate cpal streams),
+  ASIO in official builds (owner decision: Steinberg's SDK is proprietary or GPLv3), JACK, and
+  hands-on verification on macOS and Linux.
+- **Evidence:** code above; Playback Engine window; issue #42.
+- **Impact:** separate input/output clocks can drift on non-word-clocked aggregate devices.
+- **Estimate:** ≈ 8–15 h (duplex stream with one clock, JACK, hands-on hardware testing).
 
 ### G-02. MIDI devices
 
@@ -100,11 +99,12 @@ launch #142; Linux #45, #107.
 
 ### G-06. Memory-bound media
 
-- **Missing:** streaming sources from disk; recording to disk. Every source is decoded whole into
-  the `SourcePool`; takes accumulate in RAM until stop (PR #84 open).
-- **Impact:** hour-long multitrack sessions and long takes exhaust memory; a crash during a long
-  take loses it.
-- **Estimate:** ≈ 15–25 h.
+- **Done:** recording streams directly to `.wav` take files on disk via `TakeWriter`
+  (`crates/playback/src/record.rs`), updating the WAV header every second so a crash keeps the take.
+- **Missing:** streaming playback sources from disk. Every source is decoded whole into the
+  `SourcePool` on session open / import.
+- **Impact:** hour-long multitrack sessions with many large sources can exhaust memory.
+- **Estimate:** ≈ 10–15 h.
 
 ### G-07. Fidelity harness against Pro Tools
 
@@ -199,6 +199,7 @@ missing. Out of scope unless the owner decides otherwise.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-16 | minor | G-01 and G-06 shrunk: hardware I/O output routing, low-latency monitoring, latency reporting & record-offset compensation, record-to-disk streaming |
 | 2026-10-12 | minor | G-01 shrunk: audio device, rate and buffer choice; opt-in ASIO |
 | 2026-10-10 | minor | Marked the alpha blockers (G-01, G-02, G-03; parts of G-05 and G-06) from the core-workflow gate |
 | 2026-10-10 | major | Created from the full re-measure against Pro Tools Ultimate 2026.4.1: 22 ranked gaps with evidence and estimates |

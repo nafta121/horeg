@@ -131,6 +131,8 @@ pub struct Recorder {
     pub device_name: String,
     pub sample_rate: u32,
     pub channels: usize,
+    /// The input device buffer in frames when one was chosen (`None`: the device default).
+    pub buffer_size: Option<u32>,
     /// The take writer, and what each track's take holds so far.
     writer: Option<(std::thread::JoinHandle<Takes>, Vec<(TrackId, Arc<Mutex<LiveTake>>)>)>,
     /// The callback count last seen, and since when.
@@ -244,8 +246,22 @@ impl Recorder {
             Err(e) => return Err(e.to_string()),
         };
         stream.play().map_err(|e| e.to_string())?;
+        let buffer_size = match config.buffer_size {
+            cpal::BufferSize::Fixed(n) => Some(n),
+            cpal::BufferSize::Default => None,
+        };
         let seen = (0, Instant::now());
-        Ok(Recorder { monitor, shared, _stream: Some(stream), device_name: name, sample_rate: config.sample_rate.0, channels, writer: None, seen })
+        Ok(Recorder {
+            monitor,
+            shared,
+            _stream: Some(stream),
+            device_name: name,
+            sample_rate: config.sample_rate.0,
+            channels,
+            buffer_size,
+            writer: None,
+            seen,
+        })
     }
 
     #[cfg(target_os = "freebsd")]
@@ -472,6 +488,7 @@ mod tests {
             device_name: "Mic In".into(),
             sample_rate: 48_000,
             channels: 1,
+            buffer_size: None,
             writer: None,
             seen: (0, Instant::now()),
         }
