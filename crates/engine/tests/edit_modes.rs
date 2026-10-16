@@ -1,7 +1,7 @@
-use serde_json::{Value, json};
 use horegdaw_engine::Engine;
 use horegdaw_engine::edit::SHUFFLE_LOCK;
 use horegdaw_model::{AutoParam, Clip, ClipId, EditMode, Source, SourceId, TrackId};
+use serde_json::{Value, json};
 
 fn source(id: u64, frames: u64) -> Source {
     Source {

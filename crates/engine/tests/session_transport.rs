@@ -1,7 +1,7 @@
-use serde_json::json;
 use horegdaw_engine::{Engine, TransportRequest, TransportStatus};
 use horegdaw_model::Session;
 use horegdaw_time::Range;
+use serde_json::json;
 
 #[test]
 fn replacing_session_resets_status_and_discards_old_transport_requests() {

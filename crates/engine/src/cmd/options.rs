@@ -2,9 +2,9 @@
 
 use super::*;
 use crate::cmd;
-use serde_json::json;
 use horegdaw_model::{BitDepthSetting, EditState};
 use horegdaw_time::FrameRate;
+use serde_json::json;
 
 macro_rules! toggle {
     ($id:literal, $label:literal, [$($m:literal),*], $sc:expr, $field:ident) => {

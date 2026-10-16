@@ -3,8 +3,8 @@
 use crate::SoundApp;
 use crate::theme::{Tokens, bold, mono, regular, rgb};
 use egui::{Align2, Color32, Rect, Sense, Stroke, Ui, pos2, vec2};
-use serde_json::json;
 use horegdaw_model::{ClipId, SourceId};
+use serde_json::json;
 
 /// Drag a Tracks list row to reorder the tracks: a line marks the gap it will land in.
 fn drag_track(app: &mut SoundApp, ui: &Ui, row: Rect, id: u64, dropped: bool) {
@@ -571,11 +571,8 @@ fn eq_curve(ui: &mut Ui, id: &str, ins: &horegdaw_model::Insert) {
     let n = 160;
     let freqs: Vec<f32> = (0..n).map(|i| 20.0 * 1000f32.powf(i as f32 / (n - 1) as f32)).collect();
     let params: Vec<(&str, f32)> = ins.params.iter().map(|(k, v)| (k.as_str(), *v)).collect();
-    let resp = if id == "eq_7band" {
-        horegdaw_dsp::eq7_response(&params, &freqs, 48_000.0)
-    } else {
-        horegdaw_dsp::eq1_response(&params, &freqs, 48_000.0)
-    };
+    let resp =
+        if id == "eq_7band" { horegdaw_dsp::eq7_response(&params, &freqs, 48_000.0) } else { horegdaw_dsp::eq1_response(&params, &freqs, 48_000.0) };
     for db in [-12.0f32, 0.0, 12.0] {
         let y = r.center().y - db / 18.0 * r.height() * 0.5;
         ui.painter().line_segment([pos2(r.min.x, y), pos2(r.max.x, y)], Stroke::new(1.0, Color32::from_rgb(40, 50, 60)));

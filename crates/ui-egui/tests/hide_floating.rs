@@ -1,5 +1,5 @@
-use serde_json::json;
 use horegdaw_ui_egui::{Services, SoundApp};
+use serde_json::json;
 
 #[test]
 fn hide_floating_closes_automation() {

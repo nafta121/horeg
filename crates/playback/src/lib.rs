@@ -605,9 +605,27 @@ impl Player {
         let spawn = std::thread::Builder::new().name("horegdaw-clock".into()).spawn(move || {
             let mut buf = vec![0.0f32; 4096];
             let mut last = std::time::Instant::now();
+            let mut next = last;
+            let ten_ms = std::time::Duration::from_millis(10);
+
             loop {
-                std::thread::sleep(std::time::Duration::from_millis(10));
-                let now = std::time::Instant::now();
+                next += ten_ms;
+                let mut now = std::time::Instant::now();
+
+                if next > now {
+                    let diff = next - now;
+                    if diff > std::time::Duration::from_millis(2) {
+                        std::thread::sleep(diff - std::time::Duration::from_millis(1));
+                    }
+                    while std::time::Instant::now() < next {
+                        std::hint::spin_loop();
+                    }
+                } else {
+                    // We are falling behind, reset target to avoid tight loops
+                    next = now;
+                }
+
+                now = std::time::Instant::now();
                 let frames = ((now - last).as_secs_f64() * state.device_rate) as usize;
                 last = now;
                 let n = (frames * 2).min(buf.len());

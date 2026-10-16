@@ -17,9 +17,9 @@ pub mod inspect;
 pub mod io;
 pub mod score;
 
-use serde_json::{Value, json};
 use horegdaw_model::{Clip, Session, TrackId, ZoomState};
 use horegdaw_time::Samples;
+use serde_json::{Value, json};
 use std::cell::Cell;
 use std::sync::Arc;
 

@@ -564,13 +564,7 @@ mod tests {
     #[test]
     fn a_line_carries_time_level_thread_target_and_message() {
         assert_eq!(
-            format_line(
-                "2026-10-08T07:59:17.728Z",
-                log::Level::Warn,
-                "main",
-                "horegdaw_mix",
-                "eq_7band: the plugin did not accept its stored state"
-            ),
+            format_line("2026-10-08T07:59:17.728Z", log::Level::Warn, "main", "horegdaw_mix", "eq_7band: the plugin did not accept its stored state"),
             "2026-10-08T07:59:17.728Z WARN  [main] horegdaw_mix: eq_7band: the plugin did not accept its stored state\n"
         );
         // A multi-line message keeps its lines; the record still ends in exactly one newline.

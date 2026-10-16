@@ -2,9 +2,9 @@
 
 use super::*;
 use crate::cmd;
-use serde_json::json;
 use horegdaw_model::{Session, TrackKind};
 use horegdaw_time::SampleRate;
+use serde_json::json;
 
 pub fn specs() -> Vec<CommandSpec> {
     vec![
@@ -301,9 +301,8 @@ pub fn bounce_job(e: &Engine, p: &Value) -> Result<crate::io::Bounce> {
     let r = if r.is_empty() { horegdaw_time::Range::new(0, e.session().content_end().max(1)) } else { r };
     let ext = std::path::Path::new(&path).extension().and_then(|x| x.to_str()).unwrap_or("wav").to_ascii_lowercase();
     let format_name = str_param(p, "format").unwrap_or(ext.as_str());
-    let format = horegdaw_audio_io::encode_format_for(format_name).ok_or_else(|| {
-        bad("file.bounce_mix", format!("cannot write `{format_name}` files (supported: {})", horegdaw_audio_io::ENCODE_EXTENSIONS))
-    })?;
+    let format = horegdaw_audio_io::encode_format_for(format_name)
+        .ok_or_else(|| bad("file.bounce_mix", format!("cannot write `{format_name}` files (supported: {})", horegdaw_audio_io::ENCODE_EXTENSIONS)))?;
     let bit_depth = match p.get("bit_depth").map(|b| b.to_string().trim_matches('"').to_string()).as_deref() {
         Some("16") => horegdaw_audio_io::BitDepth::Int16,
         Some("32") | Some("32f") => horegdaw_audio_io::BitDepth::Float32,
@@ -517,11 +516,7 @@ mod tests {
         let first = e.session().tracks[0].clips()[0].id;
         let src = e.session().tracks[0].clips()[0].source().unwrap();
         let second = e.session_mut().new_clip_id();
-        crate::edit::place_clip(
-            e.session_mut(),
-            horegdaw_model::TrackId(track),
-            horegdaw_model::Clip::audio(second, "tone", src, 0, 10_000, 4_800),
-        );
+        crate::edit::place_clip(e.session_mut(), horegdaw_model::TrackId(track), horegdaw_model::Clip::audio(second, "tone", src, 0, 10_000, 4_800));
         for id in [first, second] {
             e.session_mut().find_clip_mut(id).unwrap().name = "Take".into();
         }

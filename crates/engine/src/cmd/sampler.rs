@@ -7,8 +7,8 @@
 
 use super::*;
 use crate::cmd;
-use serde_json::json;
 use horegdaw_model::{Insert, TrackKind};
+use serde_json::json;
 use std::path::Path;
 
 const SAMPLER: &str = "sampler";
@@ -110,11 +110,11 @@ fn clear(e: &mut Engine, p: &Value) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use crate::Engine;
-    use serde_json::json;
     use horegdaw_audio_io::{AudioBuffer, BitDepth, EncodeOptions, FileFormat};
     use horegdaw_midi::{Note, Sequence};
     use horegdaw_model::{Clip, TrackId};
     use horegdaw_time::{Range, TICKS_PER_QUARTER};
+    use serde_json::json;
     use std::path::PathBuf;
 
     /// A scratch folder for one test.
