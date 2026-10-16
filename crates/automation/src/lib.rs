@@ -9,9 +9,9 @@
 
 pub mod mcp;
 
-use serde_json::{Value, json};
 use horegdaw_engine::Engine;
 use horegdaw_engine::file_access::{self, AutomationRoots};
+use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::sync::Arc;
@@ -98,8 +98,7 @@ impl Remote {
             return Ok(());
         }
         let sock = self.addr.parse().map_err(|e| format!("{}: {e}", self.addr))?;
-        let s =
-            TcpStream::connect_timeout(&sock, Duration::from_millis(800)).map_err(|e| format!("cannot reach HoregDAW at {}: {e}", self.addr))?;
+        let s = TcpStream::connect_timeout(&sock, Duration::from_millis(800)).map_err(|e| format!("cannot reach HoregDAW at {}: {e}", self.addr))?;
         s.set_read_timeout(Some(Duration::from_secs(120))).map_err(|e| e.to_string())?;
         let r = s.try_clone().map_err(|e| e.to_string())?;
         self.conn = Some((s, BufReader::new(r)));

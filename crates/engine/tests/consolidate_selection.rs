@@ -1,10 +1,10 @@
 //! Consolidate makes one clip per track that covers exactly the edit selection (#164).
 
-use serde_json::json;
 use horegdaw_audio_io::{AudioBuffer, FileFormat};
 use horegdaw_engine::{Engine, EngineError};
 use horegdaw_model::{Clip, TrackId};
 use horegdaw_time::Range;
+use serde_json::json;
 
 fn stereo_tracks(n: u64) -> Engine {
     let mut e = Engine::default();

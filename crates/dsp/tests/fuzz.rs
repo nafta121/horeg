@@ -1,5 +1,5 @@
-use proptest::prelude::*;
 use horegdaw_dsp::{create, offline, plugins};
+use proptest::prelude::*;
 
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(48))]

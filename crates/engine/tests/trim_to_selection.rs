@@ -1,6 +1,6 @@
-use serde_json::json;
 use horegdaw_engine::Engine;
 use horegdaw_model::{ChannelFormat, Clip, Session, SourceId, TrackKind};
+use serde_json::json;
 
 #[test]
 fn trim_to_selection_keeps_clips_sorted() {

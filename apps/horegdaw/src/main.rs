@@ -262,8 +262,7 @@ fn main() -> eframe::Result {
         "HOREGDAW",
         options,
         Box::new(move |cc| {
-            let player =
-                if no_audio { None } else { Some(horegdaw_playback::Player::with_config(Arc::new(engine.session().clone()), &prefs.audio)) };
+            let player = if no_audio { None } else { Some(horegdaw_playback::Player::with_config(Arc::new(engine.session().clone()), &prefs.audio)) };
             let mut app = SoundApp::new(engine, player, services());
             app.autosave_dir = prefs_path().and_then(|p| p.parent().map(|d| d.join("Autosave")));
             app.leftovers = app.autosave_dir.as_deref().map(horegdaw_engine::autosave::leftovers).unwrap_or_default();

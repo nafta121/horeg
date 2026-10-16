@@ -3,9 +3,9 @@
 
 use super::*;
 use crate::{Clipboard, cmd};
-use serde_json::json;
 use horegdaw_midi::{Note, Sequence};
 use horegdaw_model::{Clip, ClipId};
+use serde_json::json;
 
 pub fn specs() -> Vec<CommandSpec> {
     vec![

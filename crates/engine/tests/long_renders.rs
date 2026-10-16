@@ -1,11 +1,11 @@
 //! Renders longer than one offline buffer holds are refused, rather than cut short and kept.
 
-use serde_json::{Value, json};
 use horegdaw_audio_io::{AudioBuffer, FileFormat};
 use horegdaw_dsp::offline::MAX_OFFLINE_SAMPLES;
 use horegdaw_engine::Engine;
 use horegdaw_mix::MAX_RENDER_SAMPLES;
 use horegdaw_model::{ChannelFormat, Clip, ClipId, Session, TrackKind};
+use serde_json::{Value, json};
 
 /// A stereo track "Talk" with one clip `frames` long. Its source is one second: the commands
 /// refuse on the clip's length before they render anything.

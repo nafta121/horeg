@@ -1,5 +1,5 @@
-use serde_json::json;
 use horegdaw_ui_egui::{Services, SoundApp, menus};
+use serde_json::json;
 
 #[test]
 fn bring_to_front_keeps_an_open_midi_editor_open() {

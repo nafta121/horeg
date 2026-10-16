@@ -1,10 +1,10 @@
 //! Import, export, save/load, rendering helpers (bounce, consolidate, commit) and analysis.
 
 use crate::{Engine, EngineError, Result};
-use serde_json::{Value, json};
 use horegdaw_audio_io::{AudioBuffer, EncodeOptions, FileFormat};
 use horegdaw_model::{BusId, ChannelFormat, Clip, ClipContent, Session, Source, SourceAudio, SourceId, TrackId, TrackKind};
 use horegdaw_time::{Range, Samples};
+use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -1241,10 +1241,7 @@ pub fn open_session_bytes(e: &mut Engine, name: &str, bytes: &[u8]) -> Result<Ve
     let (text, mut files) = if bytes.starts_with(b"PK\x03\x04") {
         read_bundle(bytes)?
     } else {
-        (
-            String::from_utf8(bytes.to_vec()).map_err(|_| EngineError::Io(format!("{name}: not a HoregDAW session")))?,
-            std::collections::HashMap::new(),
-        )
+        (String::from_utf8(bytes.to_vec()).map_err(|_| EngineError::Io(format!("{name}: not a HoregDAW session")))?, std::collections::HashMap::new())
     };
     let mut s = Session::from_json(&text).map_err(|err| EngineError::Io(format!("{name}: {err}")))?;
     let mut missing = Vec::new();

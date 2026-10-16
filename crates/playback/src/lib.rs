@@ -605,9 +605,27 @@ impl Player {
         let spawn = std::thread::Builder::new().name("horegdaw-clock".into()).spawn(move || {
             let mut buf = vec![0.0f32; 4096];
             let mut last = std::time::Instant::now();
+            let mut next = last;
+            let ten_ms = std::time::Duration::from_millis(10);
+
             loop {
-                std::thread::sleep(std::time::Duration::from_millis(10));
-                let now = std::time::Instant::now();
+                next += ten_ms;
+                let mut now = std::time::Instant::now();
+
+                if next > now {
+                    let diff = next - now;
+                    if diff > std::time::Duration::from_millis(2) {
+                        std::thread::sleep(diff - std::time::Duration::from_millis(1));
+                    }
+                    while std::time::Instant::now() < next {
+                        std::hint::spin_loop();
+                    }
+                } else {
+                    // We are falling behind, reset target to avoid tight loops
+                    next = now;
+                }
+
+                now = std::time::Instant::now();
                 let frames = ((now - last).as_secs_f64() * state.device_rate) as usize;
                 last = now;
                 let n = (frames * 2).min(buf.len());
@@ -828,7 +846,7 @@ impl Side {
             self.forget(key);
             let made = horegdaw_mix::create_instance(&spec.id, spec.state.as_deref(), sr, BLOCK, spec.ch);
             log::debug!("plugin instance for {:?} slot {}: {} ({} ch, created: {})", spec.track, spec.slot, spec.id, spec.ch, made.is_some());
-            self.shadow.insert(key, (spec.id.clone(), spec.ch, made.is_some()));
+            self.shadow.insert(key, (spec.id.to_string(), spec.ch, made.is_some()));
             if let Some(horegdaw_mix::NewInstance { mut plugin, refused_state }) = made {
                 if let Some(e) = plugin.editor() {
                     self.editors.insert(key, e);
@@ -839,7 +857,7 @@ impl Side {
                 if refused_state {
                     self.refused.insert(key);
                 }
-                out.push(PreparedInstance { track: spec.track, slot: spec.slot, id: spec.id, ch: spec.ch, plugin });
+                out.push(PreparedInstance { track: spec.track, slot: spec.slot, id: spec.id.to_string(), ch: spec.ch, plugin });
             }
         }
         out
