@@ -846,7 +846,7 @@ impl Side {
             self.forget(key);
             let made = horegdaw_mix::create_instance(&spec.id, spec.state.as_deref(), sr, BLOCK, spec.ch);
             log::debug!("plugin instance for {:?} slot {}: {} ({} ch, created: {})", spec.track, spec.slot, spec.id, spec.ch, made.is_some());
-            self.shadow.insert(key, (spec.id.clone(), spec.ch, made.is_some()));
+            self.shadow.insert(key, (spec.id.to_string(), spec.ch, made.is_some()));
             if let Some(horegdaw_mix::NewInstance { mut plugin, refused_state }) = made {
                 if let Some(e) = plugin.editor() {
                     self.editors.insert(key, e);
@@ -857,7 +857,7 @@ impl Side {
                 if refused_state {
                     self.refused.insert(key);
                 }
-                out.push(PreparedInstance { track: spec.track, slot: spec.slot, id: spec.id, ch: spec.ch, plugin });
+                out.push(PreparedInstance { track: spec.track, slot: spec.slot, id: spec.id.to_string(), ch: spec.ch, plugin });
             }
         }
         out
