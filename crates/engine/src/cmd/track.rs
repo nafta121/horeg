@@ -2,8 +2,8 @@
 
 use super::*;
 use crate::cmd;
-use serde_json::json;
 use horegdaw_model::{ChannelFormat, Group, GroupId, Playlist, Route, Session, Track, TrackHeight, TrackKind};
+use serde_json::json;
 
 pub fn specs() -> Vec<CommandSpec> {
     vec![
@@ -393,13 +393,7 @@ fn split_mono(e: &mut Engine, p: &Value) -> Result<Value> {
     Ok(json!({"tracks": out}))
 }
 
-fn flag(
-    e: &mut Engine,
-    p: &Value,
-    cmd: &str,
-    set: fn(&mut horegdaw_model::Track, bool),
-    get: fn(&horegdaw_model::Track) -> bool,
-) -> Result<Value> {
+fn flag(e: &mut Engine, p: &Value, cmd: &str, set: fn(&mut horegdaw_model::Track, bool), get: fn(&horegdaw_model::Track) -> bool) -> Result<Value> {
     let tracks = tracks_required(e, cmd, p)?;
     let explicit = p.get("inactive").or_else(|| p.get("hidden")).or_else(|| p.get("value")).or_else(|| p.get("ticks")).and_then(Value::as_bool);
     let s = e.session_mut();
@@ -816,10 +810,21 @@ fn select_playlist(e: &mut Engine, p: &Value) -> Result<Value> {
 }
 
 pub(crate) fn parse_route(s: &horegdaw_model::Session, v: &str) -> Route {
+    if s.is_main_output(v) {
+        return Route::Main;
+    }
     match v.to_ascii_lowercase().as_str() {
         "" | "none" | "no input" | "no output" => Route::None,
         "main" | "out 1-2" | "master" => Route::Main,
-        _ => s.bus_by_name(v).map_or_else(|| Route::Hardware(v.to_string()), |b| Route::Bus(b.id)),
+        _ => {
+            if let Some(b) = s.bus_by_name(v) {
+                Route::Bus(b.id)
+            } else if let Some(o) = s.output_path(v) {
+                Route::Hardware(o.name.clone())
+            } else {
+                Route::Hardware(v.to_string())
+            }
+        }
     }
 }
 
@@ -833,6 +838,7 @@ fn route(e: &mut Engine, p: &Value, input: bool) -> Result<Value> {
     if let Route::Hardware(name) = &r
         && create_bus
         && !name.to_ascii_lowercase().starts_with("in ")
+        && s.output_path(name).is_none()
     {
         let fmt = tracks
             .first()
@@ -982,5 +988,21 @@ mod tests {
         assert_eq!(vca(&e), None);
         assert!(e.undo());
         assert_eq!(vca(&e), Some(master.0));
+    }
+
+    #[test]
+    fn hardware_output_path_routes_without_creating_bus_and_cleans_up_on_delete() {
+        let mut e = Engine::default();
+        e.execute("track.new", &json!({"name": "Vox"})).unwrap();
+        let vox = e.session().tracks[0].id;
+        e.execute("setup.io", &json!({"action": "create_output", "name": "Cue 3-4", "first_channel": 2})).unwrap();
+        let b_count = e.session().busses.len();
+        e.execute("track.output", &json!({"tracks": [vox.0], "output": "Cue 3-4"})).unwrap();
+        assert_eq!(e.session().busses.len(), b_count, "must not auto-create a bus for an existing hardware OutputPath");
+        assert_eq!(e.session().track(vox).unwrap().mixer.output, Route::Hardware("Cue 3-4".into()));
+        e.execute("setup.io", &json!({"action": "set_output", "name": "Cue 3-4", "first_channel": 4})).unwrap();
+        assert_eq!(e.session().output_path("Cue 3-4").unwrap().first_channel, 4);
+        e.execute("setup.io", &json!({"action": "delete_output", "name": "Cue 3-4"})).unwrap();
+        assert_eq!(e.session().track(vox).unwrap().mixer.output, Route::Main);
     }
 }

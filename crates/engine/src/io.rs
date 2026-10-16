@@ -1,10 +1,10 @@
 //! Import, export, save/load, rendering helpers (bounce, consolidate, commit) and analysis.
 
 use crate::{Engine, EngineError, Result};
-use serde_json::{Value, json};
 use horegdaw_audio_io::{AudioBuffer, EncodeOptions, FileFormat};
 use horegdaw_model::{BusId, ChannelFormat, Clip, ClipContent, Session, Source, SourceAudio, SourceId, TrackId, TrackKind};
 use horegdaw_time::{Range, Samples};
+use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -1241,10 +1241,7 @@ pub fn open_session_bytes(e: &mut Engine, name: &str, bytes: &[u8]) -> Result<Ve
     let (text, mut files) = if bytes.starts_with(b"PK\x03\x04") {
         read_bundle(bytes)?
     } else {
-        (
-            String::from_utf8(bytes.to_vec()).map_err(|_| EngineError::Io(format!("{name}: not a HoregDAW session")))?,
-            std::collections::HashMap::new(),
-        )
+        (String::from_utf8(bytes.to_vec()).map_err(|_| EngineError::Io(format!("{name}: not a HoregDAW session")))?, std::collections::HashMap::new())
     };
     let mut s = Session::from_json(&text).map_err(|err| EngineError::Io(format!("{name}: {err}")))?;
     let mut missing = Vec::new();
@@ -1337,6 +1334,9 @@ pub struct Recording {
     pub punch: Option<Range>,
     /// The input's sample rate, which the take files are written at.
     pub rate: u32,
+    /// Round-trip latency compensation in session samples (positive skips initial latency samples).
+    #[serde(default)]
+    pub offset: Samples,
     pub takes: Vec<Take>,
 }
 
@@ -1350,7 +1350,8 @@ pub struct Take {
 
 /// Place recorded take files as `plan` says, as one undo step ("Record").
 pub fn place_recording(e: &mut Engine, plan: &Recording, takes: Vec<(TrackId, PathBuf)>) -> Vec<horegdaw_model::ClipId> {
-    let ids = add_recording(e, plan.start, takes, plan.pass);
+    let manual = e.session().edit.value("engine.record_offset", 0.0).round() as Samples;
+    let ids = add_recording_with_offset(e, plan.start, plan.offset.saturating_add(manual), takes, plan.pass);
     if let Some(p) = plan.punch {
         let clips: Vec<u64> = ids.iter().map(|c| c.0).collect();
         let _ = e.execute_merged("edit.trim_to_fill_selection", &json!({"clips": clips, "start": p.start, "end": p.end}), "record");
@@ -1362,6 +1363,20 @@ pub fn place_recording(e: &mut Engine, plan: &Recording, takes: Vec<(TrackId, Pa
 /// source of its clips. With `pass` (loop recording), a take becomes one clip per pass (at most
 /// 1000), each pass after the first on a new playlist.
 pub fn add_recording(e: &mut Engine, start: Samples, takes: Vec<(TrackId, PathBuf)>, pass: Option<Samples>) -> Vec<horegdaw_model::ClipId> {
+    let manual = e.session().edit.value("engine.record_offset", 0.0).round() as Samples;
+    add_recording_with_offset(e, start, manual, takes, pass)
+}
+
+/// Turn recorded take files into clips at `start` with round-trip latency compensation `comp`
+/// (positive skips the initial `comp` latency samples in each pass; negative shifts the placed
+/// clip later on the timeline).
+pub fn add_recording_with_offset(
+    e: &mut Engine,
+    start: Samples,
+    comp: Samples,
+    takes: Vec<(TrackId, PathBuf)>,
+    pass: Option<Samples>,
+) -> Vec<horegdaw_model::ClipId> {
     let before = e.session_arc();
     let mut out = Vec::new();
     for (tid, path) in takes {
@@ -1390,8 +1405,10 @@ pub fn add_recording(e: &mut Engine, start: Samples, takes: Vec<(TrackId, PathBu
                 t.playlists.push(horegdaw_model::Playlist::new(format!("{}.{:02}", t.name, t.playlists.len() + 1)));
                 t.active_playlist = t.playlists.len() - 1;
             }
+            let skip = comp.clamp(0, (n - 1).max(0));
+            let clip_start = if comp < 0 { start.saturating_sub(comp) } else { start };
             let cid = s.new_clip_id();
-            crate::edit::place_clip(s, tid, Clip::audio(cid, name, src, offset, start, n));
+            crate::edit::place_clip(s, tid, Clip::audio(cid, name, src, offset + skip, clip_start, (n - skip).max(1)));
             out.push(cid);
         }
     }
@@ -1452,6 +1469,22 @@ mod record_tests {
         assert_eq!((src.name.as_str(), src.path.as_str(), src.unsaved, src.frames), ("Vox_02", "Audio Files/Vox_02.wav", false, 4_800));
         e.execute("edit.undo", &json!({})).unwrap();
         assert!(e.session().find_clip(clips[0]).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn record_offset_compensates_take_placement() {
+        let dir = std::env::temp_dir().join(format!("horegdaw-rec-offset-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("Audio Files/Vox_01.wav");
+        write_take(&path, 2_000);
+        let mut e = Engine::default();
+        let vox = armed(&mut e, "Vox", "mono", "In 1");
+        e.execute("setup.playback_engine", &json!({"record_offset": 120})).unwrap();
+        let plan = Recording { start: 10_000, pass: None, punch: None, rate: 48_000, offset: 512, takes: Vec::new() };
+        let clips = place_recording(&mut e, &plan, vec![(vox, path)]);
+        let clip = e.session().find_clip(clips[0]).unwrap().1;
+        assert_eq!((clip.source_offset(), clip.start, clip.length), (632, 10_000, 2_000 - 632));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

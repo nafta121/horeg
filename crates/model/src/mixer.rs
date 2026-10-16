@@ -582,6 +582,38 @@ impl crate::Session {
             _ => ChannelFormat::Stereo,
         }
     }
+
+    /// Look up a configured hardware output path by name (case-insensitive).
+    pub fn output_path(&self, name: &str) -> Option<&OutputPath> {
+        let name = name.trim();
+        self.outputs.iter().find(|o| o.name.eq_ignore_ascii_case(name))
+    }
+
+    /// True when `name` refers to the primary (main) output path.
+    pub fn is_main_output(&self, name: &str) -> bool {
+        let name = name.trim();
+        if name.eq_ignore_ascii_case("main") || name.eq_ignore_ascii_case("master") {
+            return true;
+        }
+        if let Some(first) = self.outputs.first()
+            && first.name.eq_ignore_ascii_case(name)
+        {
+            return true;
+        }
+        name.eq_ignore_ascii_case("out 1-2") && !self.outputs.iter().skip(1).any(|o| o.name.eq_ignore_ascii_case(name))
+    }
+
+    /// Total physical output channels spanned by `self.outputs` (at least the main format width,
+    /// capped at 64 physical channels).
+    pub fn hardware_channels(&self) -> usize {
+        let main_ch = self.main_format().channels().clamp(2, 16);
+        self.outputs
+            .iter()
+            .map(|o| usize::from(o.first_channel).saturating_add(o.format.channels().clamp(1, 16)))
+            .max()
+            .unwrap_or(main_ch)
+            .clamp(main_ch, 64)
+    }
 }
 
 pub(crate) fn finite_or(v: f32, d: f32) -> f32 {

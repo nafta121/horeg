@@ -4,9 +4,9 @@
 use super::more_util::{set_text, store_value, text, toggle_flag, values_with_prefix};
 use super::*;
 use crate::cmd;
-use serde_json::json;
 use horegdaw_model::{BusId, ChannelFormat, ClipContent, OutputPath, Route, Session, SourceId, TrackId, TrackKind};
 use horegdaw_time::Timecode;
+use serde_json::json;
 use std::path::{Path, PathBuf};
 
 macro_rules! option {
@@ -43,7 +43,7 @@ pub fn specs() -> Vec<CommandSpec> {
             prepare_dpe
         ),
         cmd!(noundo "setup.hardware", "Hardware...", ["Setup"], None, "{device?, buffer_size?: 16..8192} — audio interface settings (sample rate is the session's)", always, |e, p| engine_settings(e, p)),
-        cmd!(noundo "setup.playback_engine", "Playback Engine...", ["Setup"], None, "{device?, buffer_size?: 16..8192, delay_compensation?: bool}", always, |e, p| {
+        cmd!(noundo "setup.playback_engine", "Playback Engine...", ["Setup"], None, "{device?, buffer_size?: 16..8192, delay_compensation?: bool, low_latency_monitoring?: bool, record_offset?: samples}", always, |e, p| {
             if let Some(v) = p.get("delay_compensation").and_then(Value::as_bool) {
                 e.session_mut().edit.delay_compensation = v;
             }
@@ -56,7 +56,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "I/O...",
             ["Setup"],
             None,
-            "{action?: list|create_bus|rename_bus|delete_bus|create_output|rename_output|delete_output, name?, new_name?, format?: stereo, first_channel?: 0}",
+            "{action?: list|create_bus|rename_bus|delete_bus|create_output|set_output|rename_output|delete_output, name?, new_name?, format?: stereo, first_channel?: 0}",
             always,
             io_setup
         ),
@@ -165,12 +165,18 @@ fn engine_settings(e: &mut Engine, p: &Value) -> Result<Value> {
     if let Some(d) = str_param(p, "device") {
         set_text(&mut s.edit, "engine.device", Some(d));
     }
+    if let Some(v) = p.get("low_latency_monitoring").and_then(Value::as_bool) {
+        s.edit.set_flag("options.low_latency_monitoring", v);
+    }
+    store_value(&mut s.edit, p, "record_offset", "engine.record_offset", -96_000.0, 96_000.0);
     Ok(json!({
         "device": text(&s.edit, "engine.device"),
         "buffer_size": s.edit.value("engine.buffer_size", 1024.0),
         "sample_rate": s.sample_rate.hz(),
         "bit_depth": s.bit_depth,
         "delay_compensation": s.edit.delay_compensation,
+        "low_latency_monitoring": s.edit.flag("options.low_latency_monitoring"),
+        "record_offset": s.edit.value("engine.record_offset", 0.0),
     }))
 }
 
@@ -273,12 +279,21 @@ fn io_setup(e: &mut Engine, p: &Value) -> Result<Value> {
             let first = i64_or(p, "first_channel", 0).clamp(0, 1023) as u16;
             s.outputs.push(OutputPath { name, first_channel: first, format });
         }
+        "set_output" => {
+            let o = s.outputs.iter_mut().find(|o| o.name.eq_ignore_ascii_case(&name)).ok_or_else(|| bad(id, format!("no output `{name}`")))?;
+            if p.get("first_channel").is_some() {
+                o.first_channel = i64_or(p, "first_channel", i64::from(o.first_channel)).clamp(0, 1023) as u16;
+            }
+            if p.get("format").is_some() {
+                o.format = format;
+            }
+        }
         "rename_output" => {
             let to = new_name.ok_or_else(|| bad(id, "`new_name` required"))?;
             let o = s.outputs.iter_mut().find(|o| o.name.eq_ignore_ascii_case(&name)).ok_or_else(|| bad(id, format!("no output `{name}`")))?;
             let old = std::mem::replace(&mut o.name, to.clone());
             for t in &mut s.tracks {
-                if t.mixer.output == Route::Hardware(old.clone()) {
+                if matches!(&t.mixer.output, Route::Hardware(h) if h.eq_ignore_ascii_case(&old)) {
                     t.mixer.output = Route::Hardware(to.clone());
                 }
             }
@@ -288,6 +303,16 @@ fn io_setup(e: &mut Engine, p: &Value) -> Result<Value> {
             s.outputs.retain(|o| !o.name.eq_ignore_ascii_case(&name));
             if s.outputs.len() == before {
                 return Err(bad(id, format!("no output `{name}`")));
+            }
+            for t in &mut s.tracks {
+                if matches!(&t.mixer.output, Route::Hardware(h) if h.eq_ignore_ascii_case(&name)) {
+                    t.mixer.output = Route::Main;
+                }
+                for slot in &mut t.mixer.sends {
+                    if slot.as_ref().is_some_and(|x| matches!(&x.target, Route::Hardware(h) if h.eq_ignore_ascii_case(&name))) {
+                        *slot = None;
+                    }
+                }
             }
         }
         other => return Err(bad(id, format!("unknown action `{other}`"))),
