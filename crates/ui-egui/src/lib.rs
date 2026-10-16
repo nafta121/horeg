@@ -33,12 +33,12 @@ pub mod waveform;
 pub mod widgets;
 pub mod windows;
 
-use serde_json::{Value, json};
 use horegdaw_engine::{Engine, TransportRequest};
 use horegdaw_model::TrackId;
 use horegdaw_playback::record::Trouble;
 use horegdaw_playback::{OutputTrouble, Player};
 use horegdaw_time::{Range, Samples};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
 
@@ -580,7 +580,10 @@ impl SoundApp {
     /// autosave that plan with the session.
     fn plan_recording(&mut self, takes: Vec<horegdaw_engine::io::Take>, pass: Option<Samples>) {
         let rate = self.recorder.as_ref().map_or(0, |r| r.sample_rate);
-        self.take_plan = Some(horegdaw_engine::io::Recording { start: self.record_start, pass, punch: self.punch, rate, takes });
+        let in_buf = self.recorder.as_ref().and_then(|r| r.buffer_size);
+        let sr = self.engine.session().sample_rate.hz();
+        let offset = self.player.as_ref().map_or(0, |p| p.record_offset_samples(in_buf, rate, sr, 0));
+        self.take_plan = Some(horegdaw_engine::io::Recording { start: self.record_start, pass, punch: self.punch, rate, offset, takes });
         if let Some(root) = self.autosave_dir.clone() {
             self.queue_autosave(root);
         }
@@ -899,6 +902,7 @@ impl SoundApp {
             pass: None,
             punch: self.punch,
             rate: 0,
+            offset: 0,
             takes: Vec::new(),
         });
         self.punch = None;
