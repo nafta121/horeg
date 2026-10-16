@@ -78,9 +78,7 @@ pub const INSTRUMENT_SLOT: usize = usize::MAX;
 
 /// Hosted third-party plugin ids (CLAP or VST3): created off the audio thread in realtime use.
 pub fn is_third_party(id: &str) -> bool {
-    id.starts_with(horegdaw_clap_host::ID_PREFIX)
-        || id.starts_with(horegdaw_vst3_host::ID_PREFIX)
-        || id.starts_with(horegdaw_au_host::ID_PREFIX)
+    id.starts_with(horegdaw_clap_host::ID_PREFIX) || id.starts_with(horegdaw_vst3_host::ID_PREFIX) || id.starts_with(horegdaw_au_host::ID_PREFIX)
 }
 
 /// A third-party plugin instance a session needs: which slot, which plugin, how many channels,
@@ -2000,27 +1998,53 @@ fn apply_matrix(src: &[Vec<f32>], frames: usize, dst: &mut [Vec<f32>], m: &Matri
 fn apply_matrix_span(src: &[Vec<f32>], span: std::ops::Range<usize>, dst: &mut [Vec<f32>], m: &Matrix, gain: f32) {
     let ns = src.len().min(MAX_CHANNELS);
     for (d, out) in dst.iter_mut().enumerate().take(MAX_CHANNELS) {
-        let mut idx = [(0usize, 0.0f32); MAX_CHANNELS];
+        let mut tap_slices = [(&[][..], 0.0f32); MAX_CHANNELS];
         let mut k = 0;
         for (s, row) in m.iter().enumerate().take(ns) {
             let g = row.get(d).copied().unwrap_or(0.0);
-            if g != 0.0
-                && let Some(slot) = idx.get_mut(k)
-            {
-                *slot = (s, g);
-                k += 1;
+            if g != 0.0 {
+                let g_eff = g * gain;
+                if g_eff != 0.0 {
+                    let src_slice = src.get(s).and_then(|c| c.get(span.clone())).unwrap_or(&[]);
+                    if !src_slice.is_empty()
+                        && let Some(slot) = tap_slices.get_mut(k)
+                    {
+                        *slot = (src_slice, g_eff);
+                        k += 1;
+                    }
+                }
             }
         }
-        let taps = idx.get(..k).unwrap_or(&[]);
-        if taps.is_empty() {
+        if k == 0 {
             continue;
         }
-        for (i, o) in out.iter_mut().enumerate().take(span.end).skip(span.start) {
-            let mut acc = 0.0f32;
-            for &(s, g) in taps {
-                acc += src.get(s).and_then(|c| c.get(i)).copied().unwrap_or(0.0) * gain * g;
+        let dst_slice = match out.get_mut(span.clone()) {
+            Some(s) => s,
+            None => continue,
+        };
+        // Fast paths for 1 and 2 taps enable SIMD auto-vectorization without bounds checks or Option overhead.
+        if k == 1 {
+            let (src0, g0) = tap_slices[0];
+            for (o, x0) in dst_slice.iter_mut().zip(src0.iter()) {
+                *o += *x0 * g0;
             }
-            *o += acc;
+        } else if k == 2 {
+            let (src0, g0) = tap_slices[0];
+            let (src1, g1) = tap_slices[1];
+            for ((o, x0), x1) in dst_slice.iter_mut().zip(src0.iter()).zip(src1.iter()) {
+                *o += *x0 * g0 + *x1 * g1;
+            }
+        } else {
+            let active = &tap_slices[..k];
+            for (i, o) in dst_slice.iter_mut().enumerate() {
+                let mut acc = 0.0f32;
+                for &(src_s, g_eff) in active {
+                    if let Some(&x) = src_s.get(i) {
+                        acc += x * g_eff;
+                    }
+                }
+                *o += acc;
+            }
         }
     }
 }
