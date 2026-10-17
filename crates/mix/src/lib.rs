@@ -78,9 +78,7 @@ pub const INSTRUMENT_SLOT: usize = usize::MAX;
 
 /// Hosted third-party plugin ids (CLAP or VST3): created off the audio thread in realtime use.
 pub fn is_third_party(id: &str) -> bool {
-    id.starts_with(horegdaw_clap_host::ID_PREFIX)
-        || id.starts_with(horegdaw_vst3_host::ID_PREFIX)
-        || id.starts_with(horegdaw_au_host::ID_PREFIX)
+    id.starts_with(horegdaw_clap_host::ID_PREFIX) || id.starts_with(horegdaw_vst3_host::ID_PREFIX) || id.starts_with(horegdaw_au_host::ID_PREFIX)
 }
 
 /// A third-party plugin instance a session needs: which slot, which plugin, how many channels,
@@ -1999,28 +1997,65 @@ fn apply_matrix(src: &[Vec<f32>], frames: usize, dst: &mut [Vec<f32>], m: &Matri
 /// [`apply_matrix`] over the frames in `span` only.
 fn apply_matrix_span(src: &[Vec<f32>], span: std::ops::Range<usize>, dst: &mut [Vec<f32>], m: &Matrix, gain: f32) {
     let ns = src.len().min(MAX_CHANNELS);
+    if span.start >= span.end {
+        return;
+    }
+    let frames = span.end - span.start;
+
     for (d, out) in dst.iter_mut().enumerate().take(MAX_CHANNELS) {
-        let mut idx = [(0usize, 0.0f32); MAX_CHANNELS];
-        let mut k = 0;
+        let Some(out_slice) = out.get_mut(span.start..span.end) else {
+            continue;
+        };
+
+        // Collect source slice handles and effective gains for non-zero matrix taps.
+        // Hoisting slice extraction and gain pre-multiplication outside the inner frame loop
+        // eliminates per-sample bounds checks and enables SIMD vectorization.
+        let mut taps = [(&[][..], 0.0f32); MAX_CHANNELS];
+        let mut num_taps = 0;
+
         for (s, row) in m.iter().enumerate().take(ns) {
             let g = row.get(d).copied().unwrap_or(0.0);
-            if g != 0.0
-                && let Some(slot) = idx.get_mut(k)
-            {
-                *slot = (s, g);
-                k += 1;
+            if g != 0.0 {
+                let src_slice = src.get(s).and_then(|c| c.get(span.start..span.end)).unwrap_or(&[]);
+                if !src_slice.is_empty()
+                    && let Some(slot) = taps.get_mut(num_taps)
+                {
+                    *slot = (src_slice, g * gain);
+                    num_taps += 1;
+                }
             }
         }
-        let taps = idx.get(..k).unwrap_or(&[]);
-        if taps.is_empty() {
+
+        let active_taps = &taps[..num_taps];
+        if active_taps.is_empty() {
             continue;
         }
-        for (i, o) in out.iter_mut().enumerate().take(span.end).skip(span.start) {
-            let mut acc = 0.0f32;
-            for &(s, g) in taps {
-                acc += src.get(s).and_then(|c| c.get(i)).copied().unwrap_or(0.0) * gain * g;
+
+        // Fast paths for common 1-tap and 2-tap routes (direct routing, mono/stereo panning)
+        match *active_taps {
+            [(s0, g0)] => {
+                let n = frames.min(s0.len());
+                for (o, &s) in out_slice[..n].iter_mut().zip(&s0[..n]) {
+                    *o += s * g0;
+                }
             }
-            *o += acc;
+            [(s0, g0), (s1, g1)] => {
+                let n = frames.min(s0.len()).min(s1.len());
+                for ((o, &x0), &x1) in out_slice[..n].iter_mut().zip(&s0[..n]).zip(&s1[..n]) {
+                    *o += x0 * g0 + x1 * g1;
+                }
+            }
+            _ => {
+                for (i, out_sample) in out_slice.iter_mut().enumerate().take(frames) {
+                    let mut acc = 0.0f32;
+                    for &(s_slice, tap_gain) in active_taps {
+                        if let Some(&x) = s_slice.get(i) {
+                            acc += x * tap_gain;
+                        }
+                    }
+                    *out_sample += acc;
+                }
+            }
         }
     }
 }
