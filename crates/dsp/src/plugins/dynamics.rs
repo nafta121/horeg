@@ -156,34 +156,89 @@ impl Plugin for Compressor {
         self.mix.snap();
     }
 
+    #[allow(clippy::needless_range_loop)]
     fn process(&mut self, io: &mut [Vec<f32>], frames: usize) {
-        let ch = self.sc.len().min(io.len());
+        let ch = self.sc.len().min(io.len()).min(self.delay.len());
         let frames = frames_in(io, frames, ch);
+        if ch == 0 || frames == 0 {
+            return;
+        }
+
+        // Optimization: Hoist channel slice handles outside the per-frame DSP loop to avoid
+        // Option destructuring (`io.get(c)`) and per-sample bounds checking overhead.
+        // Dedicated fast-paths for mono (`ch == 1`) and stereo (`ch == 2`) give direct slice
+        // access (`&mut buf[..frames]`), enabling LLVM to auto-vectorize and improve ILP.
         let hpf = self.p.on(6);
         let la = self.lookahead;
         let mut max_gr = 0.0f32;
-        for n in 0..frames {
-            let mut level = 0.0f32;
-            for c in 0..ch {
-                let x = io.get(c).and_then(|b| b.get(n)).copied().unwrap_or(0.0);
-                let s = match self.sc.get_mut(c) {
-                    Some(f) if hpf => f.process_sample(x),
-                    _ => x,
-                };
-                if s.is_finite() {
-                    level = level.max(s.abs());
-                }
+
+        if ch == 1 {
+            let buf0 = &mut io[0][..frames];
+            for n in 0..frames {
+                let x = buf0[n];
+                let s = if hpf { self.sc[0].process_sample(x) } else { x };
+                let level = if s.is_finite() { s.abs() } else { 0.0 };
+                let gr = self.gain_for(level);
+                max_gr = max_gr.max(gr);
+                let g = db_to_gain(-gr) * self.makeup.next();
+                let m = self.mix.next();
+                let d0 = &mut self.delay[0];
+                d0.push(x);
+                let dry = if la == 0 { x } else { d0.tap(la + 1) };
+                buf0[n] = dry * (1.0 - m) + dry * g * m;
             }
-            let gr = self.gain_for(level);
-            max_gr = max_gr.max(gr);
-            let g = db_to_gain(-gr) * self.makeup.next();
-            let m = self.mix.next();
-            for c in 0..ch {
-                let (Some(buf), Some(d)) = (io.get_mut(c), self.delay.get_mut(c)) else { continue };
-                let Some(x) = buf.get_mut(n) else { continue };
-                d.push(*x);
-                let dry = if la == 0 { *x } else { d.tap(la + 1) };
-                *x = dry * (1.0 - m) + dry * g * m;
+        } else if ch == 2 {
+            let (ch0, rest) = io.split_at_mut(1);
+            let buf0 = &mut ch0[0][..frames];
+            let buf1 = &mut rest[0][..frames];
+            for n in 0..frames {
+                let x0 = buf0[n];
+                let x1 = buf1[n];
+                let (s0, s1) = if hpf {
+                    let (sc0, sc_rest) = self.sc.split_at_mut(1);
+                    (sc0[0].process_sample(x0), sc_rest[0].process_sample(x1))
+                } else {
+                    (x0, x1)
+                };
+                let level0 = if s0.is_finite() { s0.abs() } else { 0.0 };
+                let level1 = if s1.is_finite() { s1.abs() } else { 0.0 };
+                let level = level0.max(level1);
+                let gr = self.gain_for(level);
+                max_gr = max_gr.max(gr);
+                let g = db_to_gain(-gr) * self.makeup.next();
+                let m = self.mix.next();
+
+                let (d0, d_rest) = self.delay.split_at_mut(1);
+                d0[0].push(x0);
+                let dry0 = if la == 0 { x0 } else { d0[0].tap(la + 1) };
+                buf0[n] = dry0 * (1.0 - m) + dry0 * g * m;
+
+                d_rest[0].push(x1);
+                let dry1 = if la == 0 { x1 } else { d_rest[0].tap(la + 1) };
+                buf1[n] = dry1 * (1.0 - m) + dry1 * g * m;
+            }
+        } else {
+            let mut bufs: Vec<&mut [f32]> = io.iter_mut().take(ch).map(|b| &mut b[..frames]).collect();
+            for n in 0..frames {
+                let mut level = 0.0f32;
+                for c in 0..ch {
+                    let x = bufs[c][n];
+                    let s = if hpf { self.sc[c].process_sample(x) } else { x };
+                    if s.is_finite() {
+                        level = level.max(s.abs());
+                    }
+                }
+                let gr = self.gain_for(level);
+                max_gr = max_gr.max(gr);
+                let g = db_to_gain(-gr) * self.makeup.next();
+                let m = self.mix.next();
+                for c in 0..ch {
+                    let x = bufs[c][n];
+                    let d = &mut self.delay[c];
+                    d.push(x);
+                    let dry = if la == 0 { x } else { d.tap(la + 1) };
+                    bufs[c][n] = dry * (1.0 - m) + dry * g * m;
+                }
             }
         }
         self.gr_meter = max_gr;
