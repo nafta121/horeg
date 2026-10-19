@@ -767,12 +767,36 @@ impl MixEngine {
                 }
                 let v0 = volume_db_at(t, pos);
                 let v1 = volume_db_at(t, pos + frames as i64);
-                for (ch, src) in strip.buf.iter().enumerate().take(self.main.len()) {
-                    if let Some(m) = self.main.get_mut(ch) {
-                        for i in 0..frames {
-                            let g = lerp_gain(v0, v1, i, frames);
-                            if let (Some(d), Some(x)) = (m.get_mut(i), src.get(i)) {
-                                *d = x * g;
+                let g0 = db_to_gain(v0);
+                let g1 = db_to_gain(v1);
+                if (g0 - 1.0).abs() < f32::EPSILON && (g1 - 1.0).abs() < f32::EPSILON {
+                    for (ch, src) in strip.buf.iter().enumerate().take(self.main.len()) {
+                        if let Some(m) = self.main.get_mut(ch)
+                            && let (Some(d), Some(s)) = (m.get_mut(..frames), src.get(..frames))
+                        {
+                            d.copy_from_slice(s);
+                        }
+                    }
+                } else if (g0 - g1).abs() < f32::EPSILON {
+                    for (ch, src) in strip.buf.iter().enumerate().take(self.main.len()) {
+                        if let Some(m) = self.main.get_mut(ch) {
+                            for (i, x) in src.iter().take(frames).enumerate() {
+                                if let Some(d) = m.get_mut(i) {
+                                    *d = x * g0;
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    let n = frames as f32;
+                    let step = (g1 - g0) / n.max(1.0);
+                    for (ch, src) in strip.buf.iter().enumerate().take(self.main.len()) {
+                        if let Some(m) = self.main.get_mut(ch) {
+                            for (i, x) in src.iter().take(frames).enumerate() {
+                                let g = g0 + step * (i as f32);
+                                if let Some(d) = m.get_mut(i) {
+                                    *d = x * g;
+                                }
                             }
                         }
                     }
@@ -1076,10 +1100,27 @@ fn process_strip(
         }
     }
     let (g0, g1) = if strip.muted { (-144.0, -144.0) } else { (v0.min(12.0), v1.min(12.0)) };
-    for c in strip.buf.iter_mut() {
-        for i in 0..frames {
-            if let Some(x) = c.get_mut(i) {
-                *x *= lerp_gain(g0, g1, i, frames.saturating_sub(1));
+    let linear_g0 = db_to_gain(g0);
+    let linear_g1 = db_to_gain(g1);
+    if (linear_g0 - 1.0).abs() >= f32::EPSILON || (linear_g1 - 1.0).abs() >= f32::EPSILON {
+        if (linear_g0 - linear_g1).abs() < f32::EPSILON {
+            if linear_g0 == 0.0 {
+                for c in strip.buf.iter_mut() {
+                    c.iter_mut().take(frames).for_each(|x| *x = 0.0);
+                }
+            } else {
+                for c in strip.buf.iter_mut() {
+                    c.iter_mut().take(frames).for_each(|x| *x *= linear_g0);
+                }
+            }
+        } else {
+            let n = frames.saturating_sub(1) as f32;
+            let step = if n > 0.0 { (linear_g1 - linear_g0) / n } else { 0.0 };
+            for c in strip.buf.iter_mut() {
+                for (i, x) in c.iter_mut().take(frames).enumerate() {
+                    let g = linear_g0 + step * (i as f32);
+                    *x *= g;
+                }
             }
         }
     }
@@ -1754,12 +1795,6 @@ fn send_level(t: &Track, i: usize, base: f32, pos: Samples) -> f32 {
     base
 }
 
-fn lerp_gain(db0: f32, db1: f32, i: usize, n: usize) -> f32 {
-    let g0 = db_to_gain(db0);
-    let g1 = db_to_gain(db1);
-    if n == 0 { g0 } else { g0 + (g1 - g0) * (i as f32 / n as f32) }
-}
-
 fn peak(x: &[f32]) -> f32 {
     x.iter().fold(0.0f32, |m, v| if v.is_finite() { m.max(v.abs()) } else { m })
 }
@@ -1999,28 +2034,47 @@ fn apply_matrix(src: &[Vec<f32>], frames: usize, dst: &mut [Vec<f32>], m: &Matri
 /// [`apply_matrix`] over the frames in `span` only.
 fn apply_matrix_span(src: &[Vec<f32>], span: std::ops::Range<usize>, dst: &mut [Vec<f32>], m: &Matrix, gain: f32) {
     let ns = src.len().min(MAX_CHANNELS);
-    for (d, out) in dst.iter_mut().enumerate().take(MAX_CHANNELS) {
-        let mut idx = [(0usize, 0.0f32); MAX_CHANNELS];
+    let nd = dst.len().min(MAX_CHANNELS);
+    for (d, out) in dst.iter_mut().enumerate().take(nd) {
+        let start = span.start.min(out.len());
+        let end = span.end.min(out.len());
+        if start >= end {
+            continue;
+        }
+
+        let mut resolved = [(&[][..], 0.0f32); MAX_CHANNELS];
         let mut k = 0;
         for (s, row) in m.iter().enumerate().take(ns) {
             let g = row.get(d).copied().unwrap_or(0.0);
-            if g != 0.0
-                && let Some(slot) = idx.get_mut(k)
-            {
-                *slot = (s, g);
-                k += 1;
+            if g != 0.0 {
+                let weight = gain * g;
+                if weight != 0.0 && let Some(slot) = resolved.get_mut(k) {
+                    let slice = src.get(s).map(Vec::as_slice).unwrap_or(&[]);
+                    *slot = (slice, weight);
+                    k += 1;
+                }
             }
         }
-        let taps = idx.get(..k).unwrap_or(&[]);
+        let taps = &resolved[..k];
         if taps.is_empty() {
             continue;
         }
-        for (i, o) in out.iter_mut().enumerate().take(span.end).skip(span.start) {
-            let mut acc = 0.0f32;
-            for &(s, g) in taps {
-                acc += src.get(s).and_then(|c| c.get(i)).copied().unwrap_or(0.0) * gain * g;
+
+        let out_slice = &mut out[start..end];
+        for &(slice, weight) in taps {
+            if slice.len() >= end {
+                let src_sub = &slice[start..end];
+                for (o, &s) in out_slice.iter_mut().zip(src_sub.iter()) {
+                    *o += s * weight;
+                }
+            } else {
+                for (i, o) in out_slice.iter_mut().enumerate() {
+                    let idx = start + i;
+                    if let Some(&s) = slice.get(idx) {
+                        *o += s * weight;
+                    }
+                }
             }
-            *o += acc;
         }
     }
 }
