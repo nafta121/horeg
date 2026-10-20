@@ -137,6 +137,7 @@ pub struct Eq<const S: usize> {
     filt: Vec<[Biquad; S]>,
     gain: Smoother,
     sr: f32,
+    active_sections: Vec<usize>,
 }
 
 /// EQ 7-Band.
@@ -174,7 +175,7 @@ impl<const S: usize> Eq<S> {
         let sm = info.params.iter().map(|i| Smoother::new(i.default)).collect();
         let vals = info.params.iter().map(|i| i.default).collect();
         let mut eq =
-            Self { info, design, gain_ids, p, sm, vals, coeffs: [Coeffs::IDENTITY; S], filt: Vec::new(), gain: Smoother::new(1.0), sr: 48_000.0 };
+            Self { info, design, gain_ids, p, sm, vals, coeffs: [Coeffs::IDENTITY; S], filt: Vec::new(), gain: Smoother::new(1.0), sr: 48_000.0, active_sections: Vec::new() };
         eq.redesign();
         eq
     }
@@ -208,6 +209,16 @@ impl<const S: usize> Eq<S> {
         for f in &mut self.filt {
             for (b, c) in f.iter_mut().zip(&self.coeffs) {
                 b.coeffs = *c;
+            }
+        }
+        self.update_active_sections();
+    }
+
+    fn update_active_sections(&mut self) {
+        self.active_sections.clear();
+        for s in 0..S {
+            if self.coeffs[s] != Coeffs::IDENTITY || self.filt.iter().any(|f| f[s].is_active()) {
+                self.active_sections.push(s);
             }
         }
     }
@@ -278,8 +289,8 @@ impl<const S: usize> Plugin for Eq<S> {
                 let Some(seg) = buf.get_mut(pos..pos + n) else { continue };
                 for (x, g) in seg.iter_mut().zip(&gains) {
                     let mut y = *x;
-                    for b in f.iter_mut() {
-                        y = b.process_sample(y);
+                    for &idx in &self.active_sections {
+                        y = f[idx].process_sample(y);
                     }
                     *x = y * g;
                 }

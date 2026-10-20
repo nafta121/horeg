@@ -146,6 +146,11 @@ impl Biquad {
     }
 
     #[inline]
+    pub fn is_active(&self) -> bool {
+        self.coeffs != Coeffs::IDENTITY || self.z1 != 0.0 || self.z2 != 0.0
+    }
+
+    #[inline]
     pub fn process_sample(&mut self, x: f32) -> f32 {
         let c = &self.coeffs;
         let y = c.b0 * x + self.z1;
