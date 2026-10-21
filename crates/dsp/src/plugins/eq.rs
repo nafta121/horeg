@@ -274,14 +274,17 @@ impl<const S: usize> Plugin for Eq<S> {
             for g in gains.iter_mut().take(n) {
                 *g = self.gain.next();
             }
+            // Optimised inner loop: block-process active biquad sections over chunk `seg`
+            // and skip Identity/passthrough biquads entirely.
             for (buf, f) in io.iter_mut().zip(self.filt.iter_mut()) {
                 let Some(seg) = buf.get_mut(pos..pos + n) else { continue };
-                for (x, g) in seg.iter_mut().zip(&gains) {
-                    let mut y = *x;
-                    for b in f.iter_mut() {
-                        y = b.process_sample(y);
+                for b in f.iter_mut() {
+                    if !b.is_passthrough() {
+                        b.process_block(seg);
                     }
-                    *x = y * g;
+                }
+                for (x, &g) in seg.iter_mut().zip(&gains[..n]) {
+                    *x *= g;
                 }
             }
             pos += n;
