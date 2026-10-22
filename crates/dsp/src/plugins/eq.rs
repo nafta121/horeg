@@ -134,6 +134,11 @@ pub struct Eq<const S: usize> {
     sm: Vec<Smoother>,
     vals: Vec<f32>,
     coeffs: [Coeffs; S],
+    // Optimization: Track indices of active non-identity biquad filter sections.
+    // In multi-band EQs (e.g. 7-band EQ), disabled or flat 0dB bands produce identity coefficients.
+    // Bypassing identity sections during sample processing avoids redundant DSP computations.
+    active: [usize; S],
+    active_len: usize,
     filt: Vec<[Biquad; S]>,
     gain: Smoother,
     sr: f32,
@@ -174,7 +179,7 @@ impl<const S: usize> Eq<S> {
         let sm = info.params.iter().map(|i| Smoother::new(i.default)).collect();
         let vals = info.params.iter().map(|i| i.default).collect();
         let mut eq =
-            Self { info, design, gain_ids, p, sm, vals, coeffs: [Coeffs::IDENTITY; S], filt: Vec::new(), gain: Smoother::new(1.0), sr: 48_000.0 };
+            Self { info, design, gain_ids, p, sm, vals, coeffs: [Coeffs::IDENTITY; S], active: [0; S], active_len: 0, filt: Vec::new(), gain: Smoother::new(1.0), sr: 48_000.0 };
         eq.redesign();
         eq
     }
@@ -205,9 +210,19 @@ impl<const S: usize> Eq<S> {
             *v = s.value();
         }
         self.coeffs = (self.design)(&self.vals, self.sr);
+        self.active_len = 0;
+        for (i, c) in self.coeffs.iter().enumerate() {
+            if *c != Coeffs::IDENTITY {
+                self.active[self.active_len] = i;
+                self.active_len += 1;
+            }
+        }
         for f in &mut self.filt {
             for (b, c) in f.iter_mut().zip(&self.coeffs) {
                 b.coeffs = *c;
+                if *c == Coeffs::IDENTITY {
+                    b.reset();
+                }
             }
         }
     }
@@ -274,12 +289,13 @@ impl<const S: usize> Plugin for Eq<S> {
             for g in gains.iter_mut().take(n) {
                 *g = self.gain.next();
             }
+            let active_indices = &self.active[..self.active_len];
             for (buf, f) in io.iter_mut().zip(self.filt.iter_mut()) {
                 let Some(seg) = buf.get_mut(pos..pos + n) else { continue };
                 for (x, g) in seg.iter_mut().zip(&gains) {
                     let mut y = *x;
-                    for b in f.iter_mut() {
-                        y = b.process_sample(y);
+                    for &idx in active_indices {
+                        y = f[idx].process_sample(y);
                     }
                     *x = y * g;
                 }
